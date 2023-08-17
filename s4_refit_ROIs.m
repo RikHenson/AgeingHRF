@@ -246,16 +246,18 @@ hdm_dir = fullfile(out_dir,'HDM_fits')
 params = {};
 params{1} = {'efficacy','decay','transit'};
 params{2} = {'efficacy','decay','transit','alpha'};
-params{3} = {'efficacy','decay','transit','alpha','feedback',};
-%params{4} = {'efficacy','decay','transit','alpha','feedback','E0'}; % E0 doesn't change enough with age?
+params{3} = {'efficacy','decay','transit','alpha','feedback'};
+params{4} = {'efficacy','decay','transit','alpha','feedback','E0'}; % E0 doesn't change enough with age?
 
 for p = 1:length(params)
     param  = params{p};
     nparam = length(param);
     is_logscale = ones(1,nparam); is_logscale(1) = 0; % assumes "efficiency" first
     
+    load(fullfile(hdm_dir,sprintf('GCMs_PEB_%d.mat',nparam)));
     for r = 1:nrois
-        load(fullfile(hdm_dir,sprintf('GCM_HDM%d_%s.mat',nparam,roi_names{r})));
+%        load(fullfile(hdm_dir,sprintf('GCM_HDM%d_%s.mat',nparam,roi_names{r})));
+        GCM = GCMs_PEB{r};
         
         pst = round(1000*[1:GCM{1}.M.N]*GCM{1}.M.dt);
         npst = length(pst);

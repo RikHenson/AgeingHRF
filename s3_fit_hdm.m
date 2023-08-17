@@ -54,6 +54,8 @@ params{2} = {'efficacy','decay','transit','alpha'};
 params{3} = {'efficacy','decay','transit','alpha','feedback'};
 params{4} = {'efficacy','decay','transit','alpha','feedback','E0'}; % E0 doesn't change enough with age?
 
+TR = 1.97;
+
 for p = 1:length(params)
     param  = params{p};
     nparam = length(param);
@@ -61,7 +63,8 @@ for p = 1:length(params)
     % HDM options
     options = struct();
     options.TE = 0.03;
-    options.delays = []; % Empty means defaults to TR/2
+    options.delays = TR/2; % TR/2 because middle slice (and not dealing with downsampled BFs here) (Empty means defaults to TR/2)
+    %options.delays = TR/2 + TR/2; % additional TR/2 because priors based on this?
     eval(sprintf('options.priorfun = @spm_hdm_priors_hdm%d',nparam));
     
     for r = 1:nrois
@@ -103,19 +106,19 @@ for p = 1:length(params)
     param  = params{p};
     nparam = length(param);
     
-    PEBs = cell(1,nrois);
-    BMAs = cell(1,nrois);
+    PEBs = cell(1,nrois); BMAs = PEBs; GCMs_PEB = PEBs;
     for r = 1:nrois
         load(fullfile(hdm_dir,sprintf('GCM_HDM%d_%s.mat',nparam,roi_names{r})));
         
-        PEBs{r} = spm_dcm_peb(GCM,M,param);
+        [PEBs{r}, GCMs_PEB{r}] = spm_dcm_peb(GCM,M,param);
         
         BMAs{r} = spm_dcm_peb_bmc(PEBs{r});
     end
     save(fullfile(hdm_dir,sprintf('BMAs_%d.mat',nparam)),'BMAs','PEBs','roi_names','param','M');
+    save(fullfile(hdm_dir,sprintf('GCMs_PEB_%d.mat',nparam)),'GCMs_PEB','roi_names','param','M');
 end
 
-% Compare F
+% Compare F across models (cannot comapre across ROIs)
 allF = [];
 for p = 1:length(params)
     param  = params{p};

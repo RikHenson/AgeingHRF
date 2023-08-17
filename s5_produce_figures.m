@@ -38,6 +38,8 @@ roi_dir = fullfile(git_dir,'ROI_data');
 models = {'FIR32','CAN3','NLF4','HDM3'};
 nmods  = length(models);
 
+addpath(fullfile(bas_dir,'HDM-toolbox-master','toolbox')) % https://github.com/pzeidman/HDM-toolbox
+
 
 %% Get FIR parameters from example SPM fMRI design matrix
 load(fullfile(roi_dir,sprintf('SPM_CC%d_Stim',participants.CCID(1))))
@@ -453,17 +455,19 @@ return
 hdm_dir = fullfile(out_dir,'HDM_fits');
 
 % Load exemplar model
-load(fullfile(hdm_dir,'GCM_HDM6_lAC')); HDM = GCM{1}; clear GCM
+load(fullfile(hdm_dir,'GCM_HDM6_lAC')); 
 
-M = HDM.M;
+M = GCM{1}.M; % M.De same for all subjects, so take first
 
 % Get priors and default values
 [pE,pC,D,is_logscale] = spm_hdm_priors_hdm6(1,M);
+pE.efficacy = 1; % Needed by spm_bireduce below
 
-params = {'efficacy','decay','transit','feedback','alpha','E0'};
-labels = {'efficacy \beta','decay \kappa','transit 1/\tau_h','feedback \gamma','stiffness \alpha','O_2 extraction, E0'};
+params = {'efficacy','decay','transit','alpha','feedback','E0'};
+labels = {'efficacy \beta (HDM3)','decay \kappa (HDM3)','transit 1/\tau_h (HDM3)','stiffness \alpha (HDM4)','feedback \gamma (HDM5)','O_2 extraction, E0 (HDM6)'};
+nparam = length(params);
 
-% Parameter values to set in HDM.M.De
+% Priors (plus bit above/below) from HDM.M.De
 scales{1} = [0.1 0.2 0.3];
 scales{2} = [0.32 0.64 1.28];
 scales{3} = [0.51 1.02 2.04];
@@ -471,6 +475,42 @@ scales{4} = [0.21 0.41 0.82];
 scales{5} = [0.17 0.33 0.66];
 scales{6} = [0.20 0.40 0.80];
 
+% Posterior parameter values from lAC
+% Ep = []; scales = cell(nparam,1);
+% for p = 1:nparam
+%     for s = 1:length(GCM)
+%         Ep(s,p) = GCM{s}.Ep.(params{p});
+%     end
+%     mEp = mean(Ep(:,p));
+%     sEp = std(Ep(:,p));
+%     
+% %    sf = 2; % Scaling factor    
+% %    if is_logscale.(params{p})
+% %        scales{p}(1) = M.De.(params{p}).*exp(mEp/sf);
+% %        scales{p}(2) = M.De.(params{p}).*exp(mEp);
+% %        scales{p}(3) = M.De.(params{p}).*exp(sf*mEp);
+% %    else
+% %        scales{p}(1) = M.De.(params{p}).*(mEp/sf);
+% %        scales{p}(2) = M.De.(params{p}).*mEp;
+% %        scales{p}(3) = M.De.(params{p}).*(sf*mEp);
+% %    end
+%    
+%    if is_logscale.(params{p})
+%        scales{p}(1) = M.De.(params{p}).*exp(mEp - sEp); 
+%        scales{p}(2) = M.De.(params{p}).*exp(mEp);
+%        scales{p}(3) = M.De.(params{p}).*exp(mEp + sEp);
+%    else
+%        scales{p}(1) = M.De.(params{p}).*(mEp - sEp);
+%        scales{p}(2) = M.De.(params{p}).*mEp;
+%        scales{p}(3) = M.De.(params{p}).*(mEp + sEp);
+%    end
+% end
+
+% Reassign priors
+for p = 1:nparam
+    D.(params{p}) = scales{p}(2);
+end
+    
 % Legends
 for p = [1:3]
     for v=1:length(scales{p}); legends{p}{v} = sprintf('%3.2fHz',scales{p}(v)); end
@@ -489,32 +529,24 @@ colours = [0 0 0
            ];
 ax = [];   
 sf1 = figure('OuterPosition',[100 100 1100 1100]);
-for i = 1:length(params)
-    ax(i) = subplot(2,3,i);
+for p = 1:nparam
+    ax(p) = subplot(2,3,p);
     
-     if length(scales{i}) == 2
+     if length(scales{p}) == 2
         styles = {':','-'};
     else
         styles = {'-',':','-'};
     end
     
-    for j = 1:length(scales{i})
+    for j = 1:length(scales{p})
                 
-        de = D;
-        P = pE;
-        
         % Set parameter
-        de.(params{i}) = scales{i}(j);
-        
-        % Set efficacy      
-        P.efficacy  = 1;
-        if ~strcmp(params{i},'efficacy')
-            de.efficacy = 0.2;
-        end
-        
+        de = D;         
+        de.(params{p}) = scales{p}(j);
+                
         % re-generate kernels
         M.De = de;
-        [M0,M1,L1,L2] = spm_bireduce(M,P);
+        [M0,M1,L1,L2] = spm_bireduce(M,pE);
         dt = M.dt;
         N  = M.N;
         [K0,K1,K2] = spm_kernels(M0,M1,L1,L2,N,dt);
@@ -524,14 +556,14 @@ for i = 1:length(params)
         t = (1:M.N)*M.dt;    
         plot(t,K1,'LineWidth',3,'LineStyle',styles{j},'Color',colours(j,:)); 
         xlabel('Time (secs)');
-        if mod(i-1,3)==0
+        if mod(p-1,3)==0
             ylabel('BOLD'); 
         end
         hold on;            
     end    
     set(gca,'FontSize',12);
-    title(labels{i},'FontSize',14);
-    legend(legends{i},'FontSize',14);
+    title(labels{p},'FontSize',14);
+    legend(legends{p},'FontSize',14);
     linkaxes(ax);
 end
 
@@ -540,23 +572,25 @@ eval(sprintf('print -dtiff -f%d %s',sf1.Number,fullfile(out_dir,'Graphics','HDM6
 
 %% Supplementary Figure 2 - posterior covariance of 6 parameters
 
-% Select 6 param model
-nparam = 6
-reord = [6 1 2 3 4 5]; rpnames = {'\beta';'\kappa';'\gamma';'1/\tau';'\alpha';'E_0'};
+% Needed to reorder columns in covariance matrix to match above
+reord = [6 1 3 4 2 5]; 
+rpnames = {'\beta';'\kappa';'1/\tau';'\alpha';'\gamma';'E_0'}; % shorter versions for axes
 
 sf2 = figure('OuterPosition',[100 100 1100 400]);
+ME = zeros(nrois,nparam); MP = ME;
 for r = 1:nrois
     load(fullfile(hdm_dir,sprintf('GCM_HDM%d_%s.mat',nparam,roi_names{r})));
     pidx = spm_find_pC(GCM{1});
     
     subplot(1,nrois,r)
-    MC = zeros(length(pidx));
+    MC = zeros(length(pidx)); 
     for s = 1:length(GCM)
-        CC = spm_cov2corr(full(GCM{s}.Cp));
-        CC = CC(pidx,pidx); CC = CC(reord,reord);
+        Cp = full(GCM{s}.Cp(pidx,pidx));
+        Cp = Cp(reord,reord);
+        CC = spm_cov2corr(Cp);
         MC = MC + CC/length(GCM);
-        %MC = MC + abs(CC(pidx,pidx))/length(GCM);
     end
+               
     %disp(MC)
     imagesc(MC); axis square; 
     set(gca,'XTick',[1:length(rpnames)],'XTickLabel',rpnames,'YTick',[1:length(rpnames)],'YTickLabel',rpnames)
@@ -566,6 +600,37 @@ for r = 1:nrois
 end
 
 eval(sprintf('print -dtiff -f%d %s',sf2.Number,fullfile(out_dir,'Graphics','HDM6_covar.tif')))
+
+% Different from below?
+%reord = [1 2 4 3 5 6]; % reordering now based on ROI file, which different from above
+% 
+% sf2 = figure('OuterPosition',[100 100 1100 400]);
+% for r = 1:nrois
+% %    B = spm_load(fullfile(roi_dir,sprintf('%s_HDM%d_beta.csv.gz',roi_names{r},nparam)));
+% %    labels = fields(B); % transit and feedback swapped relative to above
+% %    B = struct2array(B);
+% %    B = B(:, reord);
+%     load(fullfile(hdm_dir,sprintf('GCM_HDM6_%s',roi_names{r}))); 
+%     for s = 1:length(GCM)
+%         Ep(s,p) = GCM{s}.Ep.(params{p});
+%     end
+%     
+%     B = [];
+%     for p = 1:size(Ep,2)
+%         if is_logscale.(params{p})
+%             B(:,p) = M.De.(params{p}).*exp(Ep(:,p));
+%         else
+%             B(:,p) = M.De.(params{p}).*Ep(:,p);
+%         end
+%     end
+%     
+%     subplot(1,nrois,r)   
+%     imagesc(corrcoef(B)); axis square; 
+%     set(gca,'XTick',[1:length(rpnames)],'XTickLabel',rpnames,'YTick',[1:length(rpnames)],'YTickLabel',rpnames)
+%     colormap('parula');
+%     caxis([-0.5 1]); colorbar;
+%     title(roi_names{r});    
+% end
 
 
 %% Supplementary Figure 3 - compare FIR fits with SPM's canonical HRF
