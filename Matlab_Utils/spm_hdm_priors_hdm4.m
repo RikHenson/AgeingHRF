@@ -66,9 +66,9 @@ pE = spm_zeros(D);
 % Set prior variances
 pC = struct();
 pC.decay    = 1/32; 
-pC.feedback = 1/32;
+pC.feedback = 0;
 pC.transit  = 1/32;
-pC.alpha    = 0;
+pC.alpha    = 1/32;
 pC.E0       = 0; 
 pC.V0       = 0;
 pC.epsilon  = 0;
