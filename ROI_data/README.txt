@@ -8,6 +8,8 @@ The gzipped tarball "all_rois.tar.gz" contains gzipped CSVs for each of the 4 RO
         <roi>_<model>_fit.csv.gz  = fitted response for each participant and timepoint
         <roi>_<model>_SSE.csv.gz  = sum of squared residuals for each participant
 
+For the matlab scripts to work, you need to extract these files, eg with "tar xfz all_rois.tar.gz" in linux.
+
 Note for the FIR model, the <roi>_FIR_fit.csv.gz file does not exist because it is identical to <roi>_FIR_beta.csv.gz.
 
 There is also a Matlab file "SPM_CC110037_Stim.mat" containing the 1st-level fMRI analysis in SPM12 from an example participant (containing FIR design matrix in SPM.xX.X, as well as other meta data, eg TR etc)
