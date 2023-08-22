@@ -254,10 +254,10 @@ for p = 1:length(params)
     nparam = length(param);
     is_logscale = ones(1,nparam); is_logscale(1) = 0; % assumes "efficiency" first
     
-    load(fullfile(hdm_dir,sprintf('GCMs_PEB_%d.mat',nparam)));
+%    load(fullfile(hdm_dir,sprintf('GCMs_PEB_%d.mat',nparam))); % if want post-PEB params
     for r = 1:nrois
-%        load(fullfile(hdm_dir,sprintf('GCM_HDM%d_%s.mat',nparam,roi_names{r})));
-        GCM = GCMs_PEB{r};
+%        GCM = GCMs_PEB{r};
+        load(fullfile(hdm_dir,sprintf('GCM_HDM%d_%s.mat',nparam,roi_names{r}))); % if want pre-PEB params
         
         pst = round(1000*[1:GCM{1}.M.N]*GCM{1}.M.dt);
         npst = length(pst);

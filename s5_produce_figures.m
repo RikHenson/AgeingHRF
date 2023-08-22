@@ -103,9 +103,10 @@ s3 = figure('OuterPosition',[100 100 1100 1100]);  % Supplementary Figure 4
 ysample = [1:100:nparticipants];
 tsample = [0:5:15];
 max_pst = 16; smooth_flag = 1;
+tiledlayout(nmods,nrois,'TileSpacing','Compact'); 
 for m = 1:nmods
     for r = 1:nrois
-        subplot(nmods,nrois,(m-1)*nrois+r)
+        nexttile
 
         Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_fit.csv.gz',roi_names{r},models{m})));
         pst = strvcat(fields(Y)); pst = str2num(pst(:,2:end))/1000;
@@ -119,7 +120,7 @@ for m = 1:nmods
 %         minY = min(min(Y(:,ind)));
 %         maxY = max(max(Y(:,ind)));
 
-        if smooth_flag % Smooth the plot across participants (requires Stats Toolbox)
+        if smooth_flag % Smooth the plot across participants 
             for t = 1:size(Y,2)
                 Y(:,t) = smooth(Y(:,t),5);
             end
@@ -127,16 +128,21 @@ for m = 1:nmods
         
         imagesc(Y(:,ind));
         
-        set(gca,'XTick',xsample,'XTickLabel',tsample,'FontSize',10);
-        set(gca,'YTick',ysample,'YTickLabel',participants.Age(ysample),'FontSize',10)
         
         if m == 1
             title(roi_names{r})
-        elseif m  == nmods           
+        end
+        if m  == nmods
+            set(gca,'XTick',xsample,'XTickLabel',tsample,'FontSize',10);
             xlabel('PST (s)','FontSize',12);
+        else
+            set(gca,'XTick',[]);
         end
         if r == 1
+            set(gca,'YTick',ysample,'YTickLabel',participants.Age(ysample),'FontSize',10)
             ylabel(sprintf('%s: Age (years)',models{m}),'FontSize',12)
+        else
+            set(gca,'YTick',[]);
         end
         
 %         caxis manual; caxis([minY maxY]); % If want same scale for all ROIs
@@ -161,9 +167,10 @@ pp{3} = find(participants.Age > p(2));
 for p = 1:3; cp{p} = ones(1,3)*(3-p)/3; end % grayscale
 
 f4 = figure('OuterPosition',[100 100 1100 1100]); 
+tiledlayout(nmods,nrois,'TileSpacing','Compact'); 
 for m = 1:nmods
     for r = 1:nrois
-        subplot(nmods,nrois,(m-1)*nrois+r)
+        nexttile
         yline(0); hold on
         grid on, axis square
        
@@ -198,8 +205,7 @@ for m = 1:nmods
         end
 
         % axis([0 max_pst -0.5 1.6]) % hard coding y-axis
-        % set(gca,'YTick',[-0.5:0.5:1.5],'FontSize',10)
-        set(gca,'XTick',[0:5:max_pst],'FontSize',10); 
+        set(gca,'YTick',[-0.5:0.1:0.5],'FontSize',10)
         
         if m == 1
             title(roi_names{r})
@@ -207,8 +213,12 @@ for m = 1:nmods
                 l = legend([h(1) h(2) h(3)],{'Y','M','L'},'Location','NorthEast');
                 %set(l,'Position',[0.44 0.77 0.1278 0.1405])
             end
-        elseif m == nmods
+        end
+        if m == nmods
             xlabel('PST (s)','FontSize',12);
+            set(gca,'XTick',[0:5:max_pst],'FontSize',10); 
+        else
+            set(gca,'XTick',[]);
         end
         
         if r == 1
@@ -231,7 +241,7 @@ for m = 1:nmods
     
         if strcmp(models{m}(1:3),'NLF') % Load parameters
             Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_beta.csv.gz',roi_names{r},models{m})));
-            peak_amplitude = Y.amplitude';
+            peak_amplitude = Y.amp_scl;
             ytitle = 'Amp. Scaling';
         else % Calculate from fit
             Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_fit.csv.gz',roi_names{r},models{m})));
@@ -241,7 +251,7 @@ for m = 1:nmods
             Y = Y(:,ind);
             
 %            [peak_amplitude,ind] = max(Y');       % Peak (positive only)
-            [peak_amplitude,ind] = max(abs(Y'));   % Peak (positive or negative)
+            [peak_amplitude,ind] = max(abs(Y),[],2);   % Peak (positive or negative)
             ytitle = 'Peak Amp. (%)';
         end
         
@@ -249,7 +259,7 @@ for m = 1:nmods
         
         set(gca,'XTick',[18:10:88],'FontSize',10);
         
-        [Rval,Pval]=corr(participants.Age, peak_amplitude', 'type','Spearman');
+        [Rval,Pval]=corr(participants.Age, peak_amplitude, 'type','Spearman');
         legend(sprintf('R=%+3.2f, p=%3.2f',Rval,Pval),'FontSize',8,'Location','NorthEast');
         
         if m == 1
@@ -278,7 +288,7 @@ for m = 1:nmods
     
         if strcmp(models{m}(1:3),'NLF') % Load parameters
             Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_beta.csv.gz',roi_names{r},models{m})));
-            peak_latency = Y.stretch;
+            peak_latency = Y.lat_scl;
             ytitle = 'Latency Scaling';
         else % Calculate from fit
             Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_fit.csv.gz',roi_names{r},models{m})));
@@ -386,6 +396,7 @@ for r = 1:nrois
     title(roi_names{r});
 end
 linkaxes(ax,'xy');
+
 eval(sprintf('print -dtiff -f%d %s',f8.Number,fullfile(out_dir,'Graphics',sprintf('HDM%d_Params_%s.tif',nparams,effs))))
 
 
@@ -574,7 +585,7 @@ eval(sprintf('print -dtiff -f%d %s',sf1.Number,fullfile(out_dir,'Graphics','HDM6
 
 % Needed to reorder columns in covariance matrix to match above
 reord = [6 1 3 4 2 5]; 
-rpnames = {'\beta';'\kappa';'1/\tau';'\alpha';'\gamma';'E_0'}; % shorter versions for axes
+rpnames = {'\beta';'\kappa';'1/\tau_h';'\alpha';'\gamma';'E_0'}; % shorter versions for axes
 
 sf2 = figure('OuterPosition',[100 100 1100 400]);
 ME = zeros(nrois,nparam); MP = ME;
@@ -593,7 +604,7 @@ for r = 1:nrois
                
     %disp(MC)
     imagesc(MC); axis square; 
-    set(gca,'XTick',[1:length(rpnames)],'XTickLabel',rpnames,'YTick',[1:length(rpnames)],'YTickLabel',rpnames)
+    set(gca,'XTick',[1:length(rpnames)],'XTickLabel',rpnames,'XTickLabelRotation',90,'YTick',[1:length(rpnames)],'YTickLabel',rpnames)
     colormap('parula');
     caxis([-0.5 1]); colorbar;
     title(roi_names{r});    
@@ -656,11 +667,12 @@ spmcan = spmcan/max(spmcan);
 p=plot(tFIR-0.5,spmcan(1:nFIR),cl{5},'LineWidth',lw(5)); % -0.5 because CanHRF is returned from 0s onwards
 %set(p,'Color',ones(1,3)/4)
 axis([0 24 -0.2 1])
-set(gca,'FontSize',12); set(gca,'YTick',[])
+line([0 24]',[0 0]','Color',[0 0 0],'LineStyle',':');
+set(gca,'FontSize',12); set(gca,'YTick',[0])
 xlabel('PST (s)'); ylabel('Normalised Amplitude')
 legend({roi_names{:} 'CanHRF'})
 
-eval(sprintf('print -dtiff -f%d %s',sf3.Number,fullfile('Graphics','SVD_HRF.tif')))
+eval(sprintf('print -dtiff -f%d %s',sf3.Number,fullfile(out_dir,'Graphics','SVD_HRF.tif')))
 
 % figure,plot(FIRcan(:,1))
 % axis([0 32 -0.2 1]); set(gca,'YTick',[])
@@ -844,7 +856,7 @@ params = {};
 params{1} = {'efficacy','decay','transit'};
 params{2} = {'efficacy','decay','transit','alpha'};
 params{3} = {'efficacy','decay','transit','alpha','feedback'};
-%params{4} = {'efficacy','decay','transit','feedback','alpha','E0'};
+params{4} = {'efficacy','decay','transit','feedback','alpha','E0'};
 
 label = {};
 for m = 1:length(params)
@@ -878,7 +890,7 @@ for r = 1:nrois
      
      if r==1; ylabel('Abs Error (Years)');end
      % Compare first model with all others
-     p = nan(1,size(err,2)); for m = 2:size(err,2); p(m) = signrank(err(:,m-1),err(:,m)); end % CARE - pairwise tests now (not against err(:,1))
+     p = nan(1,size(err,2)); for m = 2:size(err,2); p(m) = signrank(err(:,1),err(:,m)); end % CARE - tests against first model
      %p = nan(1,size(err,2)); for m = 2:size(err,2); [~,p(m)] = ttest([err(:,1) - err(:,m)]); end % difference quite Gaussian even if individuals not
      f = find(p < .05/(length(params)-1)); 
      MM(:,r) = median(err)';
