@@ -19,7 +19,9 @@ unzipping when uploaded):
     "Onsets" (BIDS events files)
     "Confounds" (realignment parameters and CSF/WM timeseries) 
 
-You need Matlab and then to download the SPM12 freeware from: 
+You need Matlab installed (www.mathworks.com; the present scripts used 
+MATLAB Version 9.9.0.1495850 (R2020b) Update 1), and then download 
+SPM12 freeware (present scripts used version r7771) from: 
 
      https://www.fil.ion.ucl.ac.uk/spm/software/spm12/ 
 
@@ -50,7 +52,7 @@ The Matlab scripts from raw data to figures in paper are:
     s5_produce_figures.m - create TIF files for majority of figures in
         paper (excluding schematics)
 
-The folder "Graphics" contains schematic figures created by hand.
+The folder "ManualGraphics" contains schematic figures created by hand.
 
 
 For users without Matlab, some additional derived gzipped CSV files with 
