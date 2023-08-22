@@ -155,7 +155,7 @@ switch xBF.name
     case {'Gamma functions'}
     %----------------------------------------------------------------------
     pst   = [0:dt:l]';
-    bf    = spm_gamma_bf(pst,h,dt);
+    bf    = spm_gamma_bf(pst,h);
  
     case {'Finite Impulse Response'}
     %----------------------------------------------------------------------
