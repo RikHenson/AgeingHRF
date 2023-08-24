@@ -1,5 +1,5 @@
 function [c,ww] = smooth(varargin)
-% Pared down version of Matlab curviefit version
+% Pared down version of Matlab curvefit version
 % SMOOTH  Smooth data.
 %   Z = SMOOTH(Y) smooths data Y using a 5-point moving average.
 %
