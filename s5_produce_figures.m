@@ -458,7 +458,6 @@ mean(MM(:))
 
 eval(sprintf('print -dtiff -f%d %s',f9.Number,fullfile(out_dir,'Graphics','LOOCV.tif')))
 
-return
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Supplementary Figure 1 - effect of changing HDM parameters
