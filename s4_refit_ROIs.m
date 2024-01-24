@@ -8,11 +8,14 @@
 %
 % rik.henson@mrc-cbu.cam.ac.uk, Jan 2023
 
+
+%% Finish RMSE of timeseries, including for NLF, and add RMSE for FIR fit?
+
 clear
 
-bas_dir = '/imaging/rh01/CamCAN/700/HRF_SMT' % Change to your working directory
+bas_dir = '/imaging/rh01/CamCAN/700/HRF_SMT/Revision' % Change to your working directory
 
-git_dir = fullfile(bas_dir,'AgeingHRF') % https://github.com/RikHenson/AgeingHRF
+git_dir = fullfile(bas_dir,'AgeingHRF-main') % https://github.com/RikHenson/AgeingHRF
 
 spm_dir = '/imaging/local/software/spm_cbu_svn/releases/spm12_latest/' % Your local installation of SPM12
 addpath(spm_dir);
@@ -26,7 +29,7 @@ ana_dir = fullfile(out_dir,'SPM_FIR'); % From s1_fit_SPM_FIR.m
 
 roi_dir = fullfile(git_dir,'ROI_data') % CSVs (or could use VOI*mat files)
 
-participants = spm_load(fullfile(git_dir,'participants.csv'));
+participants = spm_load(fullfile(git_dir,'participants_include.csv'));
 nparticipants = length(participants.CCID)
 
 roi_names = {'lAC','bVC','lMC','rMC'};
@@ -35,8 +38,7 @@ nrois = length(roi_names);
 glms = {'Stim-locked','Resp-locked'};
 glm_type = [1 1 2 2]; % 1 = stim-locked, 2 = resp-locked
 
-%% Load an example SPM 1st level model (from first participant)
-
+% Load an example SPM 1st level model (from first participant)
 load(fullfile(roi_dir,sprintf('SPM_CC%d_Stim.mat',participants.CCID(1))),'SPM');
 
 sf      = max(SPM.xX.X(:,1)); % scaling of regressor
@@ -47,17 +49,18 @@ npst    = length(pst); % = nparam for FIR
 FIRpst  = pst; % (need for NLF below)
 TR      = SPM.xY.RT;
 
+RMSE = nan(4,nparticipants,nrois);
+
 
 %% Get fitted timeseries from the SPM FIR model (bins NOT orthogonalised)
-
 for r = 1:nrois
     fn_fit = fullfile(roi_dir,sprintf('%s_FIR%d_fit.csv',roi_names{r},nparam));
-    fp_beta = fopen(fn_fit,'w');
-    for b = 1:(npst-1); fprintf(fp_beta,'t%d,',pst(b)); end; fprintf(fp_beta,sprintf('t%d\n',pst(npst)));
+    fp_fit = fopen(fn_fit,'w');
+    for b = 1:(npst-1); fprintf(fp_fit,'t%d,',pst(b)); end; fprintf(fp_fit,sprintf('t%d\n',pst(npst)));
 
-    fn_SSE = fullfile(roi_dir,sprintf('%s_FIR%d_SSE.csv',roi_names{r},nparam));
-    fp_SSE = fopen(fn_SSE,'w');
-    fprintf(fp_SSE,'SSE\n');
+    fn_RMSE = fullfile(roi_dir,sprintf('%s_FIR%d_RMSE.csv',roi_names{r},nparam));
+    fp_RMSE = fopen(fn_RMSE,'w');
+    fprintf(fp_RMSE,'RMSE\n');
     
     % Load the prewhitened adjusted timeseries for each participant
     xY  = struct2array(spm_load(fullfile(roi_dir,sprintf('%s_BOLD.csv.gz', roi_names{r}))));
@@ -74,19 +77,21 @@ for r = 1:nrois
         % Estimate FIR Betas
         Betas = SPM.xX.pKX*xY(s,:)';
         Betas = Betas * sf; % Scale to percent signal change
-        for b = 1:(nparam-1); fprintf(fp_beta,'%6.5f,',Betas(b)); end; fprintf(fp_beta,'%6.5f\n',Betas(nparam));
+        for b = 1:(nparam-1); fprintf(fp_fit,'%6.5f,',Betas(b)); end; fprintf(fp_fit,'%6.5f\n',Betas(nparam));
         
-        % Calculate residual sum of squares (SSE) (scaling data to match rescaling of Betas)
+        % Calculate residual sum of squares (RMSE) (scaling data to match rescaling of Betas)
         e = xY(s,:)' - (SPM.xX.xKXs.X*Betas/sf);
-        fprintf(fp_SSE,'%6.5f\n',e'*e);
+        RMSE(1,s,r) = sqrt(e'*e/nscans);
+
+        fprintf(fp_RMSE,'%6.5f\n',RMSE(1,s,r));
         fprintf('.')
     end
     fprintf('\n')
     
-    fclose(fp_beta); fclose(fp_SSE);
+    fclose(fp_fit); fclose(fp_RMSE);
     
-    gzip(fn_fit); gzip(fn_SSE)
-    delete(fn_fit); delete(fn_SSE); 
+    gzip(fn_fit); gzip(fn_RMSE)
+    delete(fn_fit); delete(fn_RMSE); 
 end
 
 
@@ -95,7 +100,7 @@ end
 orthflag = 0; % do not orthogonalise
 
 % Load example SPM.mat to get PST (same for all participants)
-load(fullfile(ana_dir,'Stim-locked',sprintf('CC%d',participants.CCID(1)),'SPM.mat')); % Just get one SPM.mat
+load(fullfile(roi_dir,sprintf('SPM_CC%d_Stim',participants.CCID(1))))
 SPM.xBF.order = 3;
 SPM.xBF.name = 'hrf (with time and dispersion derivatives)';
 SPM.Sess(1).U(1).orth = orthflag; 
@@ -129,9 +134,9 @@ for r = 1:nrois
         fp_fit = fopen(fn_fit,'w');
         for b = 1:(npst-1); fprintf(fp_fit,'t%d,',pst(b)); end; fprintf(fp_fit,sprintf('t%d\n',pst(npst)));
         
-        fn_SSE = fullfile(roi_dir,sprintf('%s_CAN%d_SSE.csv',roi_names{r},nparam));
-        fp_SSE = fopen(fn_SSE,'w');
-        fprintf(fp_SSE,'SSE\n');
+        fn_RMSE = fullfile(roi_dir,sprintf('%s_CAN%d_RMSE.csv',roi_names{r},nparam));
+        fp_RMSE = fopen(fn_RMSE,'w');
+        fprintf(fp_RMSE,'RMSE\n');
         
         for s = 1:nparticipants
             name = sprintf('CC%d',participants.CCID(s));
@@ -156,19 +161,22 @@ for r = 1:nrois
             Y = SPM.xBF.bf * Betas(1:nparam) * sf;
             for b = 1:(npst-1); fprintf(fp_fit,'%6.5f,',Y(b)); end; fprintf(fp_fit,'%6.5f\n',Y(npst));
             
-            % Calculate residual sum of squares (SSE) (scaling data to match rescaling of Betas)
+            % Calculate residual sum of squares (RMSE) (scaling data to match rescaling of Betas)
             e = xY(s,:)' - (SPM.xX.xKXs.X*Betas);
-            fprintf(fp_SSE,'%6.5f\n',e'*e);
-            fprintf('.')
+            RMSE(2,s,r) = sqrt(e'*e/nscans);
+
+            fprintf(fp_RMSE,'%6.5f\n',RMSE(2,s,r));
+            fprintf('.');
         end
         fprintf('\n')
         
-        fclose(fp_beta); fclose(fp_fit); fclose(fp_SSE);
+        fclose(fp_beta); fclose(fp_fit); fclose(fp_RMSE);
         
-        gzip(fn_beta); gzip(fn_fit); gzip(fn_SSE)
-        delete(fn_beta); delete(fn_fit); delete(fn_SSE);
+        gzip(fn_beta); gzip(fn_fit); gzip(fn_RMSE)
+        delete(fn_beta); delete(fn_fit); delete(fn_RMSE);
     end
 end
+
 
 %% Get parameter estimates for NLF
 
@@ -211,9 +219,9 @@ for r = 1:nrois
     fp_fit = fopen(fn_fit,'w');
     for b = 1:(npst-1); fprintf(fp_fit,'t%d,',pst(b)); end; fprintf(fp_fit,sprintf('t%d\n',pst(npst)));
 
-    fn_SSE = fullfile(roi_dir,sprintf('%s_NLF%d_SSE.csv',roi_names{r},nparam)); % Note this is not SSE over volumes but over FIR bins
-    fp_SSE = fopen(fn_SSE,'w');
-    fprintf(fp_SSE,'SSE\n');
+%     fn_RMSE = fullfile(roi_dir,sprintf('%s_NLF%d_RMSE.csv',roi_names{r},nparam)); % Note this over FIR bins
+%     fp_RMSE = fopen(fn_RMSE,'w');
+%     fprintf(fp_RMSE,'RMSE\n');
     
     for s = 1:nparticipants
         P.y = Y(s,:)';
@@ -225,16 +233,64 @@ for r = 1:nrois
         % NLF fit
         for b = 1:(npst-1); fprintf(fp_fit,'%6.5f,',NLF.fit(b)); end; fprintf(fp_fit,'%6.5f\n',NLF.fit(npst));       
         
-        % Calculate residual sum of squares (SSE) (scaling data to match rescaling of Betas)
-        fprintf(fp_SSE,'%6.5f\n',NLF.SSE);
+%         % Calculate residual sum of squares (RMSE) (scaling data to match rescaling of Betas)
+%         fprintf(fp_RMSE,'%6.5f\n',sqrt(NLF.SSE/npst));
         fprintf('.')
     end
     fprintf('\n')
     
-    fclose(fp_beta); fclose(fp_fit); fclose(fp_SSE);
+    fclose(fp_beta); fclose(fp_fit); %fclose(fp_RMSE);
     
-    gzip(fn_beta); gzip(fn_fit); gzip(fn_SSE)
-    delete(fn_beta); delete(fn_fit); delete(fn_SSE); 
+    gzip(fn_beta); gzip(fn_fit); %gzip(fn_RMSE)
+    delete(fn_beta); delete(fn_fit); %delete(fn_RMSE); 
+end
+
+
+%% re-insert NLF4 fit into GLM to get timeseries residuals 
+
+for r = 1:nrois
+    % Get participant-specific HRFs (NLF fits)
+    SS_HRF = struct2array(spm_load(fullfile(roi_dir,sprintf('%s_NLF4_fit.csv.gz',roi_names{r}))));
+    glm_dir = glms{glm_type(r)};
+    
+    parfor s=1:nparticipants
+        name = sprintf('CC%d',participants.CCID(s));
+        swd = fullfile(ana_dir,glm_dir,name);
+        cd(swd)
+        % Load the SPM design matrix X
+        SPM = rikload('SPM.mat'); SPM = SPM.SPM;
+        
+        xY = rikload(fullfile(swd,sprintf('VOI_%s_1.mat', roi_names{r})));
+        y  = xY.Y;      
+          
+        SPM.xBF.order = 1;
+        SPM.xBF.name = 'User';
+        SPM.xBF.bf = resample(SS_HRF(s,:)',round(1/SPM.xBF.dt),1);
+        SPM = spm_fMRI_design(SPM, 0); % 0 = don't save
+
+        SPM.xX.xKXs.X = spm_filter(SPM.xX.K,SPM.xX.W*SPM.xX.X);
+        SPM.xX.pKX = pinv(SPM.xX.xKXs.X);
+        
+        b = SPM.xX.pKX*y; 
+        
+        % Calculate residual
+        e = y - (SPM.xX.xKXs.X*b); % but have to re-estimate upsampled BF
+        RMSE(3,s,r) = sqrt(e'*e/nscans);
+    end
+end
+
+% Write out NLF RMSE
+for r = 1:nrois
+    fn_RMSE = fullfile(roi_dir,sprintf('%s_NLF%d_RMSE.csv',roi_names{r},nparam)); % Note this over FIR bins
+    fp_RMSE = fopen(fn_RMSE,'w');
+    fprintf(fp_RMSE,'RMSE\n');
+    
+    for s = 1:nparticipants
+        fprintf(fp_RMSE,'%6.5f\n',RMSE(3,s,r));
+    end
+    fclose(fp_RMSE);    
+    gzip(fn_RMSE);
+    delete(fn_RMSE); 
 end
 
 
@@ -249,15 +305,33 @@ params{2} = {'efficacy','decay','transit','alpha'};
 params{3} = {'efficacy','decay','transit','alpha','feedback'};
 params{4} = {'efficacy','decay','transit','alpha','feedback','E0'}; % E0 doesn't change enough with age?
 
+hdm_sf = []; % Scaling of 1st-order kernel lost, so scale to match max-min of FIR fit
+sfK2K1 = []; % Relative scaling of 2nd-order kernel vs 1st-order (ie degree of nonlinearity)
 for p = 1:length(params)
     param  = params{p};
     nparam = length(param);
     is_logscale = ones(1,nparam); is_logscale(1) = 0; % assumes "efficiency" first
-    
-%    load(fullfile(hdm_dir,sprintf('GCMs_PEB_%d.mat',nparam))); % if want post-PEB params
+
     for r = 1:nrois
 %        GCM = GCMs_PEB{r};
+
         load(fullfile(hdm_dir,sprintf('GCM_HDM%d_%s.mat',nparam,roi_names{r}))); % if want pre-PEB params
+
+        % Scaling of HDM fit lost, so scale to max-min FIR
+        Y = spm_load(fullfile(roi_dir,sprintf('%s_FIR32_fit.csv.gz',roi_names{r})));
+        Y = struct2array(Y);
+       
+        % Used for re-scaling to match (FIR) data below
+        hdm_sf(r,1) = mean(mean(Y));
+        hdm_sf(r,2) = max(mean(Y,1)) - min(mean(Y,1));
+        
+        % Relative scaling of 2nd- to 1st-order kernels, as estimate of degree of nonlinearity
+        sf = [];
+        for s = 1:length(GCM)
+            sf(s,1) = max(GCM{s}.K1) - min(GCM{s}.K1);
+            sf(s,2) = max(GCM{s}.K2(:)) - min(GCM{s}.K2(:));
+        end
+        sfK2K1(p,r,:) = sf(:,2)./sf(:,1);
         
         pst = round(1000*[1:GCM{1}.M.N]*GCM{1}.M.dt);
         npst = length(pst);
@@ -276,16 +350,18 @@ for p = 1:length(params)
         fp_fit = fopen(fn_fit,'w');
         for b = 1:(npst-1); fprintf(fp_fit,'t%d,',pst(b)); end; fprintf(fp_fit,sprintf('t%d\n',pst(npst)));
         
-        fn_SSE = fullfile(roi_dir,sprintf('%s_HDM%d_SSE.csv',roi_names{r},nparam));
-        fp_SSE = fopen(fn_SSE,'w');
-        fprintf(fp_SSE,'SSE\n');
+        fn_RMSE = fullfile(roi_dir,sprintf('%s_HDM%d_RMSE.csv',roi_names{r},nparam));
+        fp_RMSE = fopen(fn_RMSE,'w');
+        fprintf(fp_RMSE,'RMSE\n');
         
         % Fits
         Y = cell2mat(cellfun(@(HDM)HDM.K1', GCM, 'UniformOutput', false));
         
-        % Load up FIR just for scaling
-        FIR = struct2array(spm_load(fullfile(roi_dir,sprintf('%s_FIR32_fit.csv.gz',roi_names{r}))));
-        
+        % Now scale to FIR
+        %Y = Y - mean(mean(Y)) + hdm_sf(r,1); 
+        Yr = max(mean(Y,1)) - min(mean(Y,1));
+        Y = Y * hdm_sf(r,2) / Yr;
+         
         for s = 1:nparticipants
             Ep = [];
             for v = 1:nparam
@@ -303,86 +379,23 @@ for p = 1:length(params)
             for b = 1:(npst-1); fprintf(fp_fit,'%6.5f,',Y(s,b)); end; fprintf(fp_fit,'%6.5f\n',Y(s,npst));
             
             R  = GCM{s}.R;
-            fprintf(fp_SSE,'%6.5f\n', R'*R);
+            RMSE(4,s,r) = sqrt(R'*R/nscans);
+            
+            fprintf(fp_RMSE,'%6.5f\n', RMSE(4,s,r));
             fprintf('.')
         end
         fprintf('\n')
         
-        fclose(fp_beta); fclose(fp_fit); fclose(fp_SSE);
+        fclose(fp_beta); fclose(fp_fit); fclose(fp_RMSE);
         
-        gzip(fn_beta); gzip(fn_fit); gzip(fn_SSE)
-        delete(fn_beta); delete(fn_fit); delete(fn_SSE);
+        gzip(fn_beta); gzip(fn_fit); gzip(fn_RMSE)
+        delete(fn_beta); delete(fn_fit); delete(fn_RMSE);
     end
 end
 
+drange(sfK2K1(1,:,:));
+for r = 1:nrois
+    drange(sfK2K1(1,r,:));
+end
+
 return
-
-
-%% old code to re-insert NLF4 fit into GLM to get residuals and subject-specific HRF fit
-% 
-% Y = cell(nparticipants,1); 
-% R = Y; 
-% nparams = 1;
-% parfor s=1:nparticipants
-%     Y{s} = nan(nparams,nrois);
-%     R{s} = nan(1,nrois);
-% 
-%     for r = 1:nrois
-%         % Choose the correct GLM (time-locked to motor or sensory inputs)
-%         if is_motor(r)
-%             glm_dir = glm_motor_dir;
-%         else
-%             glm_dir = glm_sensory_dir;
-%         end
-%         
-%         name = sprintf('CC%d',participants.CCID(s));
-%         roi_dir = fullfile(fwd,glm_dir);
-%         swd = fullfile(roi_dir,name);
-%         cd(swd)
-% 
-%         % Load the SPM design matrix X
-%         SPM = rikload('SPM.mat'); SPM = SPM.SPM;
-%         
-%         xY = rikload(fullfile(roi_dir,sprintf('VOI_%s_Sm1_%s_SS1_1.mat', roi_names{r}, name)));
-%         y  = xY.Y;% 
-%         
-%         SPM.xBF.order = nparams;
-%         SPM.xBF.name = 'User';
-%         SPM.xBF.bf = resample(squeeze(Fits(s,:,r))',round(1/SPM.xBF.dt),1);
-%         SPM = spm_fMRI_design(SPM, 0); % 0 = don't save
-% 
-%         SPM.xX.xKXs.X = spm_filter(SPM.xX.K,SPM.xX.W*SPM.xX.X);
-%         SPM.xX.pKX = pinv(SPM.xX.xKXs.X);
-%         
-%         b = SPM.xX.pKX*y; 
-%         
-%         % Store betas
-%         Y{s}(:,r) = b(1:nparams)';
-%         
-%         % Calculate residual
-% %         e = y - (X*b); % ignores prewhitening of design matrix
-%         e = y - (SPM.xX.xKXs.X*b); % but have to re-estimate upsampled BF
-%         R{s}(r) = e'*e;
-%     end
-% end
-% Y = permute(reshape(cat(1,Y{:}),[nparams nparticipants nrois]),[2 1 3]);
-% R = cat(1,R{:});
-% 
-% mean(R)
-% 
-% % Calculate peri-stimulus time labels for FIR bins
-% tY = (0.5:1:size(SPM.xBF.bf,1))*dt;
-% 
-% % Calculate times for observations
-% dt = SPM.xY.RT(1);
-% tR = (0:(SPM.nscan-1)) * dt + (SPM.xBF.T0/SPM.xBF.T);
-% 
-% save(fullfile(out_dir,'SSF_betas.mat'),'tY','Y','tR','R','roi_names');
-
-% figure, hold on
-% for r = 1:nrois
-%     subplot(2,2,r),hold on
-%     for s = 1:nparticipants
-%         plot(tY,resample(squeeze(Fits(s,:,r))',round(1/SPM.xBF.dt),1) * squeeze(mean(Y(:,:,r)))');
-%     end
-% end

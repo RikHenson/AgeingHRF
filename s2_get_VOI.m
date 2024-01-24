@@ -11,11 +11,9 @@
 
 clear
 
-bas_dir = '/imaging/rh01/CamCAN/700/HRF_SMT' % Change to your working directory
+bas_dir = '/imaging/rh01/CamCAN/700/HRF_SMT/Revision' % Change to your working directory
 
-raw_dir = '/imaging/camcan/cc700/mri/pipeline/release004/data_fMRI_Smooth/aamod_smooth_00001/'; % Change to where you downloaded processed SMT images from CamCAN website above
-
-git_dir = fullfile(bas_dir,'AgeingHRF') % https://github.com/RikHenson/AgeingHRF
+git_dir = fullfile(bas_dir,'AgeingHRF-main') % https://github.com/RikHenson/AgeingHRF
 
 spm_dir = '/imaging/local/software/spm_cbu_svn/releases/spm12_latest/' % Your local installation of SPM12
 addpath(spm_dir);
@@ -23,9 +21,8 @@ addpath(spm_dir);
 addpath(fullfile(git_dir,'Matlab_Utils')) % spm_regions needed
 spm('Defaults','fMRI')
 
-out_dir = fullfile(bas_dir,'outputs'); % Where results will go
-
-ana_dir = fullfile(out_dir,'SPM_FIR'); 
+out_dir = fullfile(bas_dir,'outputs'); % Where results will go (should have been created in s1_fit_SPM_FIR.m)
+ana_dir = fullfile(out_dir,'SPM_FIR'); % Where results will go (should have been created in s1_fit_SPM_FIR.m)
 
 participants = spm_load(fullfile(git_dir,'participants.csv'));
 nparticipants = length(participants.CCID)
@@ -36,18 +33,18 @@ nrois = length(roi_names);
 glms = {'Stim-locked','Resp-locked'};
 glm_type = [1 1 2 2]; % 1 = stim-locked, 2 = resp-locked
 
-%% Extract data using SPM VOI
-% cluster_images created by hand from viewing "Age" contrast of Group analyses,
-% moving to cluster and saving cluster as NII file
 
-cluster_images{1} = fullfile(ana_dir,'Stim-locked','Group','lAC_Age_F12_559vox.nii'); 
-cluster_images{2} = fullfile(ana_dir,'Stim-locked','Group','bVC_Age_F12_371vox.nii'); 
-cluster_images{3} = fullfile(ana_dir,'Resp-locked','Group','lMC_Age_F12_219vox.nii'); 
-cluster_images{4} = fullfile(ana_dir,'Resp-locked','Group','rMC_Age_F12_481vox.nii'); 
+%% Extract data using SPM VOI, using mask images from s1_fit_SPM_FIR.m
 
-pval_thrs = [0.005 0.05 0.5 1]; % [] means no single-subject threshold
+cluster_images{1} = fullfile(ana_dir,'Stim-locked','Group','lAC_Age_F5_280vox.nii'); 
+cluster_images{2} = fullfile(ana_dir,'Stim-locked','Group','bVC_Age_F5_182vox.nii'); 
+cluster_images{3} = fullfile(ana_dir,'Resp-locked','Group','lMC_Age_F5_54vox.nii'); 
+cluster_images{4} = fullfile(ana_dir,'Resp-locked','Group','rMC_Age_F5_88vox.nii'); 
 
-SS_pval = cell(1,nparticipants); Nvox = SS_pval;
+%pval_thrs = []; % no single-subject threshold
+pval_thrs = [0.05]; %[0.005 0.05 0.5 1]; 
+
+Nvox = cell(1,nparticipants); 
 for r = 1:nrois
     bwd = fullfile(ana_dir,glms{glm_type(r)});
    
@@ -55,70 +52,108 @@ for r = 1:nrois
         ccid = sprintf('CC%d',participants.CCID(s)); disp(ccid)
         cd(fullfile(bwd,ccid))
         
-        Nvox{s}(r) = 0;
+        Nvox{s}(r) = NaN;
         
         matlabbatch = {};
         matlabbatch{1}.spm.util.voi.spmmat = cellstr('SPM.mat');
         matlabbatch{1}.spm.util.voi.adjust = 1;
         matlabbatch{1}.spm.util.voi.session = 1;
         matlabbatch{1}.spm.util.voi.name = roi_names{r};
+        
         matlabbatch{1}.spm.util.voi.roi{1}.mask.image = cellstr(cluster_images{r});
         matlabbatch{1}.spm.util.voi.roi{1}.mask.threshold = 0.5;
-        matlabbatch{1}.spm.util.voi.expression = 'i1';
         
         if isempty(pval_thrs)
+            matlabbatch{1}.spm.util.voi.expression = 'i1';
             spm_jobman('run',matlabbatch);
         else
-            matlabbatch{1}.spm.util.voi.roi{2}.spm.spmmat = {''}; %cellstr(SPMfile);
-            matlabbatch{1}.spm.util.voi.roi{2}.spm.contrast = 1;
-            matlabbatch{1}.spm.util.voi.roi{2}.spm.conjunction = 1; % not used
-            matlabbatch{1}.spm.util.voi.roi{2}.spm.threshdesc = 'none';
-            matlabbatch{1}.spm.util.voi.roi{2}.spm.extent = 0;
-            matlabbatch{1}.spm.util.voi.roi{2}.spm.mask = struct('contrast', {}, 'thresh', {}, 'mtype', {});
+            matlabbatch{1}.spm.util.voi.roi{end+1}.spm.spmmat = {''}; %cellstr(SPMfile);
+            matlabbatch{1}.spm.util.voi.roi{end}.spm.contrast = 1;
+            matlabbatch{1}.spm.util.voi.roi{end}.spm.conjunction = 1; % not used
+            matlabbatch{1}.spm.util.voi.roi{end}.spm.threshdesc = 'none';
+            matlabbatch{1}.spm.util.voi.roi{end}.spm.extent = 0;
+            matlabbatch{1}.spm.util.voi.roi{end}.spm.mask = struct('contrast', {}, 'thresh', {}, 'mtype', {});
             matlabbatch{1}.spm.util.voi.expression = 'i1&i2';
             ps = 0;
-            while Nvox{s}(r) < 3
+            while isnan(Nvox{s}(r)) & ps < length(pval_thrs) %& Nvox{s}(r) < 3
                 ps = ps+1;
                 try delete(fullfile(bwd,ccid,sprintf('*%s*',roi_names{r}))); end
                 
-                matlabbatch{1}.spm.util.voi.roi{2}.spm.thresh = pval_thrs(ps);
+                matlabbatch{1}.spm.util.voi.roi{end}.spm.thresh = pval_thrs(ps);
                 spm_jobman('run',matlabbatch);
                 
                 try 
                     tmp = rikload(fullfile(bwd,ccid,sprintf('VOI_%s_1',roi_names{r})));
                     Nvox{s}(r) = size(tmp.xY.y,2);
+                catch
+                    Nvox{s}(r) = 0;
                 end
             end
-            SS_pval{s}(r) = pval_thrs(ps);
         end
         
         delete(fullfile(bwd,ccid,'VOI_*.nii'))
     end
 end
+ 
+%% Exclude participants with no voxels in ROI
 
-%% Check VOI p-value and Nvox across age
+Nvox = cat(1,Nvox{:});
+[s,r] = find(Nvox==0);
+exclude = unique(s);
+exclude_ccid = participants.CCID(exclude)
+exclude_ages = participants.Age(exclude)
 
-% SS_pval = cat(1,SS_pval{:});
-% figure,hist(SS_pval)
+% See why excluded?
+% for s = exclude % (s=148, CC221585 has horrible waves!)
+%     ccid = sprintf('CC%d',participants.CCID(s)); disp(ccid)
+%     cd(fullfile(ana_dir,'Stim-locked',ccid))
+%     load SPM
+%     figure,imagesc(zscore(SPM.xX.X))
+%     spm_movie('load',1,SPM.xY.P,27,1,0);
+% end
 
-%Nvox    = cat(1,Nvox{:});
-Nvox = [];
+save(fullfile(out_dir,'Excluded_Participants'),'s','r','exclude','exclude_ccid','exclude_ages','Nvox')
+
+%% Write out valid participants
+
+include = setdiff([1:nparticipants],exclude);
+length(include)
+
+fp = fopen(fullfile(git_dir,'participants_include.csv'),'w');
+fprintf(fp,'CCID,Age\n');
+for s = include
+    fprintf(fp,'%d,%d\n',participants.CCID(s),participants.Age(s));
+end
+fclose(fp);
+
+%% Collect Nvox and Pvar
+
+participants = spm_load(fullfile(git_dir,'participants_include.csv'));
+nparticipants = length(participants.CCID)
+
+Nvox = []; Pvar = [];
 for r = 1:nrois
     bwd = fullfile(ana_dir,glms{glm_type(r)});
     for s = 1:nparticipants
-        ccid = sprintf('CC%d',participants.CCID(s)); 
+        ccid = sprintf('CC%d',participants.CCID(s));
         cd(fullfile(bwd,ccid))
         tmp = load(fullfile(bwd,ccid,sprintf('VOI_%s_1',roi_names{r})));
         Nvox(s,r) = size(tmp.xY.y,2);
+        Pvar(s,r) = tmp.xY.s(1).^2/sum(tmp.xY.s.^2);
     end
 end
 [min(Nvox); median(Nvox); max(Nvox)]
+[min(Pvar); median(Pvar); max(Pvar)]
 
 figure;
 for r=1:nrois
-    subplot(nrois,1,r),plot(participants.Age,Nvox(:,r),'o'),title(roi_names{r})
-%    subplot(1,roi_names,r),plot(participants.Age,SS_pval(:,r),'o'),title(roi_names{r})
+%    subplot(nrois,1,r),plot(participants.Age,Pvar(:,r),'o'),title(roi_names{r}),ylabel('Pvar')
+    subplot(nrois,1,r),plot(participants.Age,Nvox(:,r),'o'),title(roi_names{r}),ylabel('Nvox')
+%    subplot(nrois,1,r),plot(Nvox(:,r),Pvar(:,r),'o'),title(roi_names{r}),xlabel('Nvox'),ylabel('Pvar')
+%%    subplot(1,roi_names,r),plot(participants.Age,SS_pval(:,r),'o'),title(roi_names{r})
+    [R,p]=corr(participants.Age,Nvox(:,r)); fprintf('%s: Age-Nvox, R=%3.2f, p=%4.3f\n',roi_names{r},R,p)
 end
+
 
 
 %% Save BOLD ROI timeseries to CSV for more general access

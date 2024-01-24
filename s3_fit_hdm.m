@@ -14,14 +14,17 @@
 
 clear
 
-bas_dir = '/imaging/rh01/CamCAN/700/HRF_SMT' % Change to your working directory
+bas_dir = '/imaging/rh01/CamCAN/700/HRF_SMT/Revision' % Change to your working directory
 
-git_dir = fullfile(bas_dir,'AgeingHRF') % https://github.com/RikHenson/AgeingHRF
+git_dir = fullfile(bas_dir,'AgeingHRF-main') % https://github.com/RikHenson/AgeingHRF
 
 spm_dir = '/imaging/local/software/spm_cbu_svn/releases/spm12_latest/' % Your local installation of SPM12
 addpath(spm_dir);
 
-addpath(fullfile(git_dir,'Matlab_Utils')) % Some SPM12 updates needed for below (eg to properly turn-off orthogonalisation of basis functions)
+addpath(fullfile(bas_dir,'HDM-toolbox-master','toolbox')) % https://github.com/pzeidman/HDM-toolbox
+
+% Some SPM12 and HDM updates needed for below (eg to properly turn-off orthogonalisation of basis functions, and match PST in HDM to SPM basis functions)
+addpath(fullfile(git_dir,'Matlab_Utils')) 
 spm('Defaults','fMRI')
 
 out_dir = fullfile(bas_dir,'outputs'); % Where results will go
@@ -31,7 +34,7 @@ ana_dir = fullfile(out_dir,'SPM_FIR');
 hdm_dir = fullfile(out_dir,'HDM_fits');
 try mkdir(hdm_dir); end
 
-participants = spm_load(fullfile(git_dir,'participants.csv'));
+participants = spm_load(fullfile(git_dir,'participants_include.csv'));
 nparticipants = length(participants.CCID)
 
 roi_names = {'lAC','bVC','lMC','rMC'};
@@ -40,10 +43,7 @@ nrois = length(roi_names);
 glms = {'Stim-locked','Resp-locked'};
 glm_type = [1 1 2 2]; % 1 = stim-locked, 2 = resp-locked
 
-addpath(fullfile(bas_dir,'HDM-toolbox-master','toolbox')) % https://github.com/pzeidman/HDM-toolbox
-
-% Set binary vector with on / off for each SPM regressor (we'll use the
-% first FIR bin as the driving input)
+% Use onsets from the first FIR regressor as the driving input
 u_idx = 1; 
   
 cd(hdm_dir)
@@ -52,7 +52,7 @@ params = {};
 params{1} = {'efficacy','decay','transit'};
 params{2} = {'efficacy','decay','transit','alpha'};
 params{3} = {'efficacy','decay','transit','alpha','feedback'};
-params{4} = {'efficacy','decay','transit','alpha','feedback','E0'}; % E0 doesn't change enough with age?
+params{4} = {'efficacy','decay','transit','alpha','feedback','E0'}; 
 
 TR = 1.97;
 
@@ -63,8 +63,7 @@ for p = 1:length(params)
     % HDM options
     options = struct();
     options.TE = 0.03;
-    options.delays = TR/2; % TR/2 because middle slice (and not dealing with downsampled BFs here) (Empty means defaults to TR/2)
-    %options.delays = TR/2 + TR/2; % additional TR/2 because priors based on this?
+    options.delays = TR/2; % TR/2 because middle slice (and not dealing with downsampled BFs here) (Empty means defaults to TR/2 anyway)
     eval(sprintf('options.priorfun = @spm_hdm_priors_hdm%d',nparam));
     
     for r = 1:nrois

@@ -11,9 +11,9 @@
 
 clear
 
-bas_dir = '/imaging/rh01/CamCAN/700/HRF_SMT' % Change to wherever you downloaded/cloned "AgeingHRF" and "HDM-toolbox"
+bas_dir = '/imaging/rh01/CamCAN/700/HRF_SMT/Revision' % Change to wherever you downloaded/cloned "AgeingHRF" and "HDM-toolbox"
 
-git_dir = fullfile(bas_dir,'AgeingHRF')
+git_dir = fullfile(bas_dir,'AgeingHRF-main')
 
 spm_dir = '/imaging/local/software/spm_cbu_svn/releases/spm12_latest/' % Your local installation of SPM12
 addpath(spm_dir);
@@ -27,7 +27,7 @@ hdm_dir = fullfile(out_dir,'HDM_fits');
 
 try mkdir(fullfile(out_dir,'Graphics')); end % for all figures
 
-participants = spm_load(fullfile(git_dir,'participants.csv'));
+participants = spm_load(fullfile(git_dir,'participants_include.csv'));
 nparticipants = length(participants.CCID)
 age_range = [min(participants.Age) max(participants.Age)]
 
@@ -40,13 +40,14 @@ nmods  = length(models);
 
 addpath(fullfile(bas_dir,'HDM-toolbox-master','toolbox')) % https://github.com/pzeidman/HDM-toolbox
 
-
-%% Get FIR parameters from example SPM fMRI design matrix
+% Get FIR parameters from example SPM fMRI design matrix
 load(fullfile(roi_dir,sprintf('SPM_CC%d_Stim',participants.CCID(1))))
 nFIR = SPM.xBF.order;
 tFIR = (0.5:1:nFIR) * SPM.xBF.length / SPM.xBF.order;
 sFIR = max(SPM.xX.X(:,1)); % Scaling factor for percent signal change (height of FIR bin ~ 16)
 nscan = SPM.nscan;
+max_pst = 16; % for plotting below
+
 
 %% Figure 1 - show basis sets for FIR, Can and NLF (in higher time resolution)
 f1 = figure; 
@@ -90,50 +91,66 @@ set(gca,'YTick',[0],'XTick',[0:8:32],'XTickLabel',[0:8:32])
 
 eval(sprintf('print -dtiff -f%d %s',f1.Number,fullfile(out_dir,'Graphics','Fig1_BFs.tif')))
 
-% Graphic from Friston paper added manually in powerpoint to bottom of Fig1 to show HDM
+% Last graphic of HDM from Friston paper, organised in powerpoint and saved in "ManualGraphics" folder
 
 
 %% Figure 2 - MIPs and FIRs from SPM Group Analyses
 
-% Graphic prepared manually from saving component graphics from SPM
+% Prepared manually by exporting parts from SPM windows, organising them within powerpoint, and saving in "ManualGraphics" folder
 
 
 %% Figure 3 - HRFs heatmap for each model (rows) and ROI (columns)
 s3 = figure('OuterPosition',[100 100 1100 1100]);  % Supplementary Figure 4
-ysample = [1:100:nparticipants];
-tsample = [0:5:15];
-max_pst = 16; smooth_flag = 1;
 tiledlayout(nmods,nrois,'TileSpacing','Compact'); 
-for m = 1:nmods
-    for r = 1:nrois
-        nexttile
+ysample = [1:100:nparticipants];
+smooth_flag = 1; pst_tick = [0.5 5 10 15];
+FIR_RMSE = nan(nparticipants,nmods,nrois);
+minY = 0; maxY = 0;
+for r = 1:nrois
+    for m = 1:nmods
+        nexttile((m-1)*nmods+r)
 
         Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_fit.csv.gz',roi_names{r},models{m})));
         pst = strvcat(fields(Y)); pst = str2num(pst(:,2:end))/1000;
         Y = struct2array(Y);
         ind = find(pst <= max_pst);
-        xsample = [];
-        for t = 1:length(tsample)
-            [~,xsample(t)] = min(abs(pst(ind) - tsample(t)));
+        Y = Y(:,ind);
+       
+        if m==1
+            FIR_Y = Y;
+            FIR_T = pst(ind);
+            PST_ind = FIR_T;
+        else            
+            PST_ind = [];
+            for t = 1:length(FIR_T) % Note that last bin will be same bin for HDM since max(pst)=24
+                [~,PST_ind(end+1)] = min(abs(pst-FIR_T(t)));
+            end
+            
+            FIR_RMSE(:,m,r) = sqrt(mean((Y(:,PST_ind) - FIR_Y).^2,2));
         end
-        
-%         minY = min(min(Y(:,ind)));
-%         maxY = max(max(Y(:,ind)));
-
+ 
         if smooth_flag % Smooth the plot across participants 
             for t = 1:size(Y,2)
                 Y(:,t) = smooth(Y(:,t),5);
             end
         end
         
-        imagesc(Y(:,ind));
-        
-        
+        imagesc(Y);
+                
+        minY = min([minY min(Y(:))]);
+        maxY = max([maxY max(Y(:))]);
+
+        % resample for x-axis ticks
+        PST_ind = [];
+        for t = 1:length(pst_tick) % Note that last bin will be same bin for HDM where max(pst)=24
+            [~,PST_ind(end+1)] = min(abs(pst-pst_tick(t)));
+        end
+
         if m == 1
             title(roi_names{r})
         end
         if m  == nmods
-            set(gca,'XTick',xsample,'XTickLabel',tsample,'FontSize',10);
+            set(gca,'XTick',PST_ind,'XTickLabel',pst_tick,'FontSize',10);
             xlabel('PST (s)','FontSize',12);
         else
             set(gca,'XTick',[]);
@@ -145,11 +162,17 @@ for m = 1:nmods
             set(gca,'YTick',[]);
         end
         
-%         caxis manual; caxis([minY maxY]); % If want same scale for all ROIs
         colormap('parula');
         colorbar        
         axis square;
         drawnow;
+    end
+end
+
+for r = 1:nrois
+    for m = 1:nmods
+        nexttile((m-1)*nmods+r)
+        caxis manual; caxis([minY maxY]); % ensure same scale for all ROIs
     end
 end
 
@@ -167,45 +190,45 @@ pp{3} = find(participants.Age > p(2));
 for p = 1:3; cp{p} = ones(1,3)*(3-p)/3; end % grayscale
 
 f4 = figure('OuterPosition',[100 100 1100 1100]); 
-tiledlayout(nmods,nrois,'TileSpacing','Compact'); 
+minY = zeros(1,nrois); maxY = zeros(1,nrois);
 for m = 1:nmods
     for r = 1:nrois
-        nexttile
-        yline(0); hold on
+        subplot(nmods,nrois,(m-1)*nmods+r) ; hold on
+        yline(0)
         grid on, axis square
        
         % Load FIR ("pst data")
         Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_fit.csv.gz',roi_names{r},models{1})));
         pst = strvcat(fields(Y)); pst = str2num(pst(:,2:end))/1000;
         Y = struct2array(Y);
-        ind = find(pst <= max_pst);
-            
+        ind = find(pst <= max_pst); 
+
         if strcmp(models{m}(1:3),'FIR') % plot FIR as model fit
             for p = 1:length(pp)
                 h(p) = plot(pst(ind),mean(Y(pp{p},ind)),'Color',cp{p},'LineStyle','-','LineWidth',2);
             end
         else % plot FIR as data and store FIR for later scaling of HDM
-            for p = 1:length(pp)
-                fy{p} = mean(Y(pp{p},ind));
-                plot(pst(ind),fy{p},'Color',cp{p},'LineStyle',':','LineWidth',2);
+            fy =[]; for p = 1:length(pp)
+                fy(p,:) = mean(Y(pp{p},ind));              
+                plot(pst(ind),fy(p,:),'Color',cp{p},'LineStyle',':','LineWidth',2);
             end
             
             Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_fit.csv.gz',roi_names{r},models{m})));
             pst = strvcat(fields(Y)); pst = str2num(pst(:,2:end))/1000;
             Y = struct2array(Y);
-            ind = find(pst <= max_pst);
+            ind = find(pst <= max_pst); 
             
+            my = []; for p = 1:length(pp)
+                my(p,:) = mean(Y(pp{p},ind));              
+            end
+             
+            minY(r) = min([minY(r) min([fy(:); my(:)])]);
+            maxY(r) = max([maxY(r) max([fy(:); my(:)])]);
+           
             for p = 1:length(pp)
-                yy = mean(Y(pp{p},ind));               
-                if strcmp(models{m}(1:3),'HDM') % Scaling lost in HDM kernels
-                    yy = yy * (max(fy{p})-min(fy{p})) / (max(yy)-min(yy));
-                end
-                plot(pst(ind),yy,'Color',cp{p},'LineStyle','-','LineWidth',2);
+                plot(pst(ind),my(p,:),'Color',cp{p},'LineStyle','-','LineWidth',2);
             end
         end
-
-        % axis([0 max_pst -0.5 1.6]) % hard coding y-axis
-        set(gca,'YTick',[-0.5:0.1:0.5],'FontSize',10)
         
         if m == 1
             title(roi_names{r})
@@ -224,7 +247,14 @@ for m = 1:nmods
         if r == 1
             ylabel(sprintf('%s: %% BOLD',models{m}),'FontSize',12)
         end
-        drawnow;
+    end
+end
+
+for r = 1:nrois
+    for m = 1:nmods
+        subplot(nmods,nrois,(m-1)*nmods+r), hold on
+        set(gca,'YTick',[-2:0.2:2],'FontSize',10) % assume never more than +/- 2% change!
+        axis([0 max_pst minY(r) maxY(r)]) % ensure same scale for all ROIs
     end
 end
 
@@ -232,7 +262,8 @@ eval(sprintf('print -dtiff -f%d %s',f4.Number,fullfile(out_dir,'Graphics','HRF_f
 
 
 %% Figure 5 - peak amplitude by age
-f5 = figure('OuterPosition',[100 100 1100 1100]); 
+f5 = figure('OuterPosition',[100 100 1100 1100]);
+minY = zeros(1,nmods); maxY = zeros(1,nmods);
 for m = 1:nmods
     for r = 1:nrois
         subplot(nmods,nrois,(m-1)*nrois+r)
@@ -241,8 +272,10 @@ for m = 1:nmods
     
         if strcmp(models{m}(1:3),'NLF') % Load parameters
             Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_beta.csv.gz',roi_names{r},models{m})));
-            peak_amplitude = Y.amp_scl;
+%            peak_amplitude = Y.amp_scl; % positive  scaling
+            peak_amplitude = abs(Y.amp_scl); % positive or negative scaling
             ytitle = 'Amp. Scaling';
+            
         else % Calculate from fit
             Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_fit.csv.gz',roi_names{r},models{m})));
             pst = strvcat(fields(Y)); pst = str2num(pst(:,2:end))/1000;
@@ -250,11 +283,14 @@ for m = 1:nmods
             ind = find(pst <= max_pst);
             Y = Y(:,ind);
             
-%            [peak_amplitude,ind] = max(Y');       % Peak (positive only)
-            [peak_amplitude,ind] = max(abs(Y),[],2);   % Peak (positive or negative)
+%            peak_amplitude = max(Y,[],2);       % Peak (positive only)
+            peak_amplitude = max(abs(Y),[],2);   % Peak (positive or negative)
             ytitle = 'Peak Amp. (%)';
         end
-        
+                        
+        minY(m) = min([minY(m) min(peak_amplitude(:))]);
+        maxY(m) = max([maxY(m) max(peak_amplitude(:))]);
+
         plot(participants.Age, peak_amplitude, '.', 'MarkerSize', 4);
         
         set(gca,'XTick',[18:10:88],'FontSize',10);
@@ -275,11 +311,25 @@ for m = 1:nmods
     end
 end
 
+for r = 1:nrois
+    for m = 1:nmods
+        subplot(nmods,nrois,(m-1)*nmods+r)
+        if strcmp(models{m},'NLF4')
+            axis([min(participants.Age) max(participants.Age) minY(m) maxY(m)]) % ensure same scale for all ROIs, but different for NLF
+        else
+            others = setdiff([1:nmods],find(strcmp(models,'NLF4')));
+            axis([min(participants.Age) max(participants.Age) min(minY(others)) max(maxY(others))]) % ensure same scale for all ROIs and other models
+        end
+%        axis([min(participants.Age) max(participants.Age) min(minY) max(maxY)]) % ensure same scale for all ROIs
+    end
+end
+
 eval(sprintf('print -dtiff -f%d %s',f5.Number,fullfile(out_dir,'Graphics','peak_amplitude.tif')))
 
 
 %% Figure 6 - peak latency by age
 f6 = figure('OuterPosition',[100 100 1100 1100]); 
+minY = zeros(1,nmods); maxY = zeros(1,nmods);
 for m = 1:nmods
     for r = 1:nrois
         subplot(nmods,nrois,(m-1)*nrois+r)
@@ -288,8 +338,10 @@ for m = 1:nmods
     
         if strcmp(models{m}(1:3),'NLF') % Load parameters
             Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_beta.csv.gz',roi_names{r},models{m})));
-            peak_latency = Y.lat_scl;
+%            peak_latency = Y.lat_scl;
+            peak_latency = abs(Y.lat_scl);
             ytitle = 'Latency Scaling';
+            
         else % Calculate from fit
             Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_fit.csv.gz',roi_names{r},models{m})));
             pst = strvcat(fields(Y)); pst = str2num(pst(:,2:end))/1000;
@@ -297,11 +349,14 @@ for m = 1:nmods
             ind = find(pst <= max_pst);
             Y = Y(:,ind);
             
-%            [peak_amplitude,ind] = max(Y');       % Peak (positive only)
-            [peak_amplitude,ind] = max(abs(Y'));   % Peak (positive or negative)
+%            [peak_amplitude,ind] = max(Y,[],2);       % Peak (positive only)
+             [peak_amplitude,ind] = max(abs(Y),[],2);   % Peak (positive or negative)
             peak_latency = pst(ind);
             ytitle = 'Peak Latency (s)';
         end
+                        
+        minY(m) = min([minY(m) min(peak_latency(:))]);
+        maxY(m) = max([maxY(m) max(peak_latency(:))]);
         
         plot(participants.Age, peak_latency, '.', 'MarkerSize', 4);
         
@@ -323,20 +378,32 @@ for m = 1:nmods
     end
 end
 
+for r = 1:nrois
+    for m = 1:nmods
+        subplot(nmods,nrois,(m-1)*nmods+r)
+        if strcmp(models{m},'NLF4')
+            axis([min(participants.Age) max(participants.Age) minY(m) maxY(m)]) % ensure same scale for all ROIs, but different for NLF
+        else
+            others = setdiff([1:nmods],find(strcmp(models,'NLF4')));
+            axis([min(participants.Age) max(participants.Age) min(minY(others)) max(maxY(others))]) % ensure same scale for all ROIs and other models
+        end
+%        axis([min(participants.Age) max(participants.Age) min(minY) max(maxY)]) % ensure same scale for all ROIs
+    end
+end
+
 eval(sprintf('print -dtiff -f%d %s',f6.Number,fullfile(out_dir,'Graphics','peak_latency.tif')))
 
 
 %% Figure 7 - HDM3 parameters by age
 m = 4; % Model 4 = HDM
 params = {'efficacy','decay','transit'};
+labels = {'efficacy (a.u.)','decay (Hz)','transit (Hz)'};
 nparams = length(params);
 
 f7 = figure('OuterPosition',[100 100 1100 1100]); 
-
-for r = 1:nrois
-    
+minY = zeros(1,nparams); maxY = zeros(1,nparams);
+for r = 1:nrois    
     Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_beta.csv.gz',roi_names{r},models{m})));
-    labels = strvcat(fields(Y));
     Y = struct2array(Y);
      
     for p = 1:nparams
@@ -344,7 +411,10 @@ for r = 1:nrois
         grid on % axis square
         
         plot(participants.Age, Y(:,p), '.', 'MarkerSize', 4);
-        
+                                
+        minY(p) = min([minY(p) min(Y(:,p))]);
+        maxY(p) = max([maxY(p) max(Y(:,p))]);
+
         set(gca,'XTick',[18:10:88],'FontSize',10);
         
         [Rval,Pval]=corr(participants.Age, Y(:,p), 'type','Spearman');
@@ -356,14 +426,104 @@ for r = 1:nrois
             xlabel('Age (years)','FontSize',12);
         end
         if r == 1
-            ylabel(sprintf('HDM3: %s',labels(p,:)),'FontSize',12)
+            ylabel(sprintf('HDM3: %s',labels{p}),'FontSize',12)
         end
         
         drawnow;
     end
 end
 
+for r = 1:nrois
+    for p = 1:nparams
+        subplot(nparams, nrois, (p-1)*nrois + r)
+        axis([min(participants.Age) max(participants.Age) min(minY(p)) max(maxY(p))]) % ensure same scale for all ROIs and other models
+     end
+end
+
 eval(sprintf('print -dtiff -f%d %s',f7.Number,fullfile(out_dir,'Graphics','HDM3_age.tif')))
+
+
+% Mediation by vascular factors?
+vasc = readtable(fullfile(roi_dir,'vascular_factors.csv'));
+
+% Average HDM parameters across ROIs
+mHDM = zeros(nparticipants,3); 
+for r = 1:nrois  
+    Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_beta.csv.gz',roi_names{r},models{m})));
+    labels = fields(Y);
+    Y = struct2array(Y);
+    mHDM = mHDM + Y/nrois;
+end
+
+% Need mediation toolbox: https://github.com/canlab/MediationToolbox
+addpath(genpath('/home/rh01/matlab/mediation_toolbox/'))
+
+pval = [];
+for l = 1:3
+    LVF = sprintf('LVF%d',l);
+    vasc_vals = vasc.(LVF);
+    vasc_inds = find(~isnan(vasc_vals));
+    vasc_ccid = strvcat(vasc.CCID(vasc_inds)); vasc_ccid = str2num(vasc_ccid(:,3:end));
+    
+    [both_ccid,hdm_both,vasc_both] = intersect(participants.CCID,vasc_ccid);
+    length(both_ccid)
+    vasc_vals = vasc_vals(vasc_inds(vasc_both));
+    %figure,
+    for p = 1:3
+        %subplot(3,1,p)
+        %plot(vasc_vals,mHDM(hdm_both,p),'o'); xlabel(LVF); ylabel(labels{p});
+        %    [Rval,Pval]=corr(vasc_vals,mHDM(hdm_both,p),'type','Spearman')
+        %    [Rval,Pval]=corr(participants.Age(hdm_both),vasc_vals,'type','Spearman')
+        %[Rval,Pval]=partialcorr(vasc_vals,mHDM(hdm_both,p),participants.Age(hdm_both),'type','Spearman');
+        %legend(sprintf('R=%+3.2f, p=%3.2f',Rval,Pval),'FontSize',8,'Location','NorthEast');
+        [~,mstats] = mediation(zscore(participants.Age(hdm_both)), zscore(mHDM(hdm_both,p)), zscore(vasc_vals), 'stats', 'verbose', 'names', {'Age', params{p}, LVF});
+        pval(l,p) = mstats.p(end);
+    end
+end
+pval
+[l,p]=find(pval<.05/9)
+
+LVF = sprintf('LVF%d',l);
+vasc_vals = vasc.(LVF);
+vasc_inds = find(~isnan(vasc_vals));
+vasc_ccid = strvcat(vasc.CCID(vasc_inds)); vasc_ccid = str2num(vasc_ccid(:,3:end));
+[both_ccid,hdm_both,vasc_both] = intersect(participants.CCID,vasc_ccid);
+vasc_vals = vasc_vals(vasc_inds(vasc_both));
+mediation(zscore(participants.Age(hdm_both)), zscore(mHDM(hdm_both,p)), zscore(vasc_vals), 'stats', 'verbose', 'names', {'Age', params{p}, LVF});
+       
+% Mediation by MEG ERFs (better to do MEG power)
+
+meg = readtable(fullfile(roi_dir,'MEG_energy.csv'));
+
+meg_roi_names = meg.Properties.VariableNames(2:end);
+pval = [];
+for r = 1:nrois      
+    Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_beta.csv.gz',roi_names{r},models{m})));
+    labels = fields(Y);
+    Y = struct2array(Y);
+    
+    meg_vals = meg.(meg_roi_names{r});
+    meg_vals = sqrt(meg_vals);
+    meg_inds = find(~isnan(meg_vals));
+    meg_ccid = meg.CCID(meg_inds);
+    
+    [both_ccid,hdm_both,meg_both] = intersect(participants.CCID,meg_ccid);
+    %length(both_ccid)
+    meg_vals = meg_vals(meg_inds(meg_both));
+ 
+    [Rval,Pval]=corr(meg_vals,participants.Age(hdm_both),'type','Spearman'); fprintf('Age-MEG: %s: R=%4.3f, p=%4.3f\n',meg_roi_names{r},Rval,Pval);
+    
+    %figure
+    for p = 1:3
+        %subplot(3,1,p)
+        %plot(meg_vals,Y(hdm_both,p),'o'); xlabel(meg_roi_names{r}); ylabel(labels{p});
+        %[Rval,Pval]=partialcorr(meg_vals,Y(hdm_both,p),participants.Age(hdm_both),'type','Spearman'); fprintf('MEG-HDM, partial Age: %s: R=%4.3f, p=%4.3f\n',meg_roi_names{r},Rval,Pval);
+        %legend(sprintf('R=%+3.2f, p=%3.2f',Rval,Pval),'FontSize',8,'Location','NorthEast'); 
+        [~,mstats] = mediation(zscore(participants.Age(hdm_both)), zscore(Y(hdm_both,p)), zscore(meg_vals), 'stats', 'verbose', 'names', {'Age', labels{p}, meg_roi_names{r}});
+         pval(r,p) = mstats.p(end);
+    end
+end
+pval
 
 
 %% Figure 8 - Plot HDM parameters after PEB
@@ -388,9 +548,12 @@ for r = 1:nrois
     Ep = full(Ep(reord,e));
     Vp = full(Vp(reord,e));
     
-    Ep(find(abs(Ep)<0.001)) = 0; % remove parameters that BMR pruned
-    %spm_plot_ci(Ep,Vp);
-    spm_plot_ci(Ep./sqrt(Vp),zeros(length(Ep),1)); ylabel('Zscore') % Z-scores since different scalings?
+    % Disregard trivially small parameter values, which we define as those with a rate constant less then 0.001Hz. 
+    % This cut-off corresponds to half-life greater than 1000*ln(2)=693s=11.5 minutes, which is too slow to be relevant.    
+    Ep(find(abs(Ep)<0.001)) = 0; 
+    
+    spm_plot_ci(Ep,Vp)
+    %    spm_plot_ci(Ep./sqrt(Vp),zeros(length(Ep),1)); ylabel('Zscore')
     
     set(gca,'XTickLabel',params,'FontSize',10,'XTickLabelRotation',90);
     title(roi_names{r});
@@ -404,59 +567,102 @@ eval(sprintf('print -dtiff -f%d %s',f8.Number,fullfile(out_dir,'Graphics',sprint
 pnames = cell(1,nmods);
 for n = 1:nFIR; pnames{1}{n} = sprintf('t%d',round(tFIR(n)*1000)); end
 for n = 1:3; pnames{2}{n} = sprintf('CAN_beta%d',n); end
-pnames{3} = {'Lat. Off.','Lat. Scl.','Amp. Off.','Amp. Scl.'};
+pnames{3} = {'lat_off','lat_scl','amp_off','amp_scl','R2'};
 pnames{4} = {'efficacy','decay','transit'};
 
 for m = 1:nmods
     nparams(m) = length(pnames{m});
 end
 
-f9 = figure('OuterPosition',[100 100 1100 600]);
-
-MM = []; %AgeR2 = [];
-for r = 1:nrois
-     err = nan(nparticipants,nmods);   
-     for m = 1:nmods    
+f9s(1) = figure('OuterPosition',[100 100 1100 600]);
+hp(1) = uipanel('Parent',f9s(1),'Position',[0 0 1 1]);
+mina = []; maxa = [];
+err = nan(nparticipants,nmods); pred_age = nan(nparticipants,nmods);
+for m = 1:nmods      
+    Y = [];
+    for r = 1:nrois
         if strcmp(models{m}(1:3),'FIR')
-            Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_fit.csv.gz',roi_names{r},models{m})));
+            rY = spm_load(fullfile(roi_dir,sprintf('%s_%s_fit.csv.gz',roi_names{r},models{m})));
         else
-            Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_beta.csv.gz',roi_names{r},models{m})));
+            rY = spm_load(fullfile(roi_dir,sprintf('%s_%s_beta.csv.gz',roi_names{r},models{m})));
         end
-        ind = find(ismember(fields(Y),pnames{m})); % exclude R2 from NLF
-        Y = struct2array(Y); Y = Y(:,ind);
-        
-%        [~,~,~,~,AgeR2(m,r)] = glm(participants.Age,[Y ones(nparticipants,1)],[eye(nparams(m)) zeros(nparams(m),1)]',0);
-         
-        for s = 1:nparticipants
-            sidx = [1:nparticipants]; sidx(s)=[];
-            X = [Y(sidx,:) ones(nparticipants-1,1)];
-            B = pinv(X)*participants.Age(sidx);
-            pred_age = [Y(s,:) 1]*B;
-            err(s,m) = participants.Age(s) - pred_age;
-        end
-     end
-     subplot(1,nrois,r),hold on,
-     
-     err = abs(err);
-     line(kron(ones(nparticipants,1),[1:size(err,2)])',abs(err'),'Color',[0.5 0.5 0.5])
-     boxplot(err); % bar(mean(err))
-     set(gca,'XTickLabel',models,'FontSize',10);
-     
-     if r==1; ylabel('Abs Error (Years)');end
-     %[~,~,p] = t_matrix(AllErr,1);
-     % Compare FIR with all others
-     p = nan(1,size(err,2)); for m = 2:size(err,2); p(m) = signrank(err(:,1),err(:,m)); end
-     %p = nan(1,size(err,2)); for m = 2:size(err,2); [~,p(m)] = ttest([err(:,1) - err(:,m)]); end % difference quite Gaussian even if individuals not
-     f = find(p < .05/(nmods-1)); 
-     MM(:,r) = median(err)';
-     for ff = f; text(ff-0.1,MM(ff,r),'*','FontSize',12,'Color',[0 1 0]); end
-     title(roi_names{r});
+        ind = find(ismember(fields(rY),pnames{m})); % exclude R2 from NLF
+        rY = struct2array(rY); rY = rY(:,ind);      
+        Y = [Y rY];
+    end
+    
+    for s = 1:nparticipants
+        sidx = [1:nparticipants]; sidx(s)=[];
+        X = [Y(sidx,:) ones(nparticipants-1,1)];
+        B = pinv(X)*participants.Age(sidx);
+        pred_age(s,m) = [Y(s,:) 1]*B;
+        err(s,m) = participants.Age(s) - pred_age(s,m);
+    end
+    
+    subplot(1,nmods,m,'Parent',hp(1)),hold on,
+    plot(participants.Age, pred_age(:,m), '.')
+    title(models{m})
+    
+    set(gca,'XTick',[18:35:88],'XTickLabel',[18:35:88],'FontSize',10)
+    xlabel(sprintf('%s: Actual Age',models{m}),'FontSize',12)
+    if m == 1
+        set(gca,'YTick',[18:35:88],'YTickLabel',[18:35:88],'FontSize',10)
+        ylabel(sprintf('%s: Predicted Age',models{m}),'FontSize',12)
+    else
+        set(gca,'YTick',[]);
+    end
+    axis square
+    mina = min([mina; pred_age(:)]); maxa = max([maxa; pred_age(:)]);
+    %       axis([min(pred_age(:)) max(pred_age(:)) min(pred_age(:)) max(pred_age(:))]);
+    
+    R = corr(participants.Age, pred_age(:,m));
+    text(10,105,sprintf('R^2=%3.2f',R^2))
 end
-MM
-mean(MM,2)
-mean(MM(:))
+
+err = abs(err);
+median(err)
+p = nan(nmods); 
+for m1 = 1:nmods 
+    for m2 = (m1+1):nmods
+        p(m1,m2) = signrank(err(:,m1),err(:,m2)); 
+    end
+end
+p
+%p = p*length(find(~isnan(p)))
+
+f9s(2) = figure('OuterPosition',[100 100 1100 600]);
+hp(2) = uipanel('Parent',f9s(2),'Position',[0 0 1 1]);
+subplot(1,1,1,'Parent',hp(2)), hold on
+line(kron(ones(nparticipants,1),[1:size(err,2)])',abs(err'),'Color',[0.8 0.8 0.8])
+boxplot(abs(err))
+ylabel('Absolute Error (Years)')
+set(gca,'XTickLabel',models)
+ylim([0 max(err(:))])
+line([0 5],[10 10],'Color',[0 0 0],'LineStyle',':')
+for m = 1:nmods
+    figure(f9s(1))
+    subplot(1,nmods,m,'Parent',hp(1))
+    axis([mina maxa mina maxa]);
+    
+    figure(f9s(2))
+    if p(1,m)<.05, text(m-0.03,60,'*','FontSize',18), end
+end
+
+f9 = figure('OuterPosition',[100 100 1100 1100]);
+npanels = numel(f9s);
+hp_sub = nan(1,npanels); 
+for idx = 1:npanels
+    hp_sub(idx) = copyobj(hp(idx),f9);
+    set(hp_sub(idx),'Position',[0,(2-idx)/npanels,1,1/npanels]);
+end
+whitebg(gcf)
+
+% Cannot work out how to set background to white for this multipanel figure
+% so did by hand in graphics editor!
 
 eval(sprintf('print -dtiff -f%d %s',f9.Number,fullfile(out_dir,'Graphics','LOOCV.tif')))
+close(f9s(1)), close(f9s(2))
+
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -484,37 +690,6 @@ scales{3} = [0.51 1.02 2.04];
 scales{4} = [0.21 0.41 0.82];
 scales{5} = [0.17 0.33 0.66];
 scales{6} = [0.20 0.40 0.80];
-
-% Posterior parameter values from lAC
-% Ep = []; scales = cell(nparam,1);
-% for p = 1:nparam
-%     for s = 1:length(GCM)
-%         Ep(s,p) = GCM{s}.Ep.(params{p});
-%     end
-%     mEp = mean(Ep(:,p));
-%     sEp = std(Ep(:,p));
-%     
-% %    sf = 2; % Scaling factor    
-% %    if is_logscale.(params{p})
-% %        scales{p}(1) = M.De.(params{p}).*exp(mEp/sf);
-% %        scales{p}(2) = M.De.(params{p}).*exp(mEp);
-% %        scales{p}(3) = M.De.(params{p}).*exp(sf*mEp);
-% %    else
-% %        scales{p}(1) = M.De.(params{p}).*(mEp/sf);
-% %        scales{p}(2) = M.De.(params{p}).*mEp;
-% %        scales{p}(3) = M.De.(params{p}).*(sf*mEp);
-% %    end
-%    
-%    if is_logscale.(params{p})
-%        scales{p}(1) = M.De.(params{p}).*exp(mEp - sEp); 
-%        scales{p}(2) = M.De.(params{p}).*exp(mEp);
-%        scales{p}(3) = M.De.(params{p}).*exp(mEp + sEp);
-%    else
-%        scales{p}(1) = M.De.(params{p}).*(mEp - sEp);
-%        scales{p}(2) = M.De.(params{p}).*mEp;
-%        scales{p}(3) = M.De.(params{p}).*(mEp + sEp);
-%    end
-% end
 
 % Reassign priors
 for p = 1:nparam
@@ -611,92 +786,109 @@ end
 
 eval(sprintf('print -dtiff -f%d %s',sf2.Number,fullfile(out_dir,'Graphics','HDM6_covar.tif')))
 
-% Different from below?
-%reord = [1 2 4 3 5 6]; % reordering now based on ROI file, which different from above
-% 
-% sf2 = figure('OuterPosition',[100 100 1100 400]);
-% for r = 1:nrois
-% %    B = spm_load(fullfile(roi_dir,sprintf('%s_HDM%d_beta.csv.gz',roi_names{r},nparam)));
-% %    labels = fields(B); % transit and feedback swapped relative to above
-% %    B = struct2array(B);
-% %    B = B(:, reord);
-%     load(fullfile(hdm_dir,sprintf('GCM_HDM6_%s',roi_names{r}))); 
-%     for s = 1:length(GCM)
-%         Ep(s,p) = GCM{s}.Ep.(params{p});
-%     end
-%     
-%     B = [];
-%     for p = 1:size(Ep,2)
-%         if is_logscale.(params{p})
-%             B(:,p) = M.De.(params{p}).*exp(Ep(:,p));
-%         else
-%             B(:,p) = M.De.(params{p}).*Ep(:,p);
-%         end
-%     end
-%     
-%     subplot(1,nrois,r)   
-%     imagesc(corrcoef(B)); axis square; 
-%     set(gca,'XTick',[1:length(rpnames)],'XTickLabel',rpnames,'YTick',[1:length(rpnames)],'YTickLabel',rpnames)
-%     colormap('parula');
-%     caxis([-0.5 1]); colorbar;
-%     title(roi_names{r});    
-% end
-
 
 %% Supplementary Figure 3 - compare FIR fits with SPM's canonical HRF
 %colormap('parula')
 sf3 = figure; hold on 
-lw = [2 2 2 2 1];
-cl = {'r-','g:','b-.','b--','k-'};
-for r = 1:nrois
+lw = [4 3 2 1 2];
+%cl = {'r--','g-.','b:','b-','k-'};
+cl = {'r-','g-','b-','b:','k:'};
+for r = 1:nrois-1 % to ignore rMC
     FIR = struct2array(spm_load(fullfile(roi_dir,sprintf('%s_%s_fit.csv.gz',roi_names{r},models{1}))));    
-    [U,S,V] = spm_svd(squeeze(FIR));
-    FIRcan(:,r) = full(V(:,1)); 
-    [~,i] = max(abs(FIRcan(:,r))); if sign(FIRcan(i,r))<0; FIRcan(:,r) = -FIRcan(:,r); end
-    FIRcan(:,r) = FIRcan(:,r) - FIRcan(1,r);
-    FIRcan(:,r) = FIRcan(:,r)/max(FIRcan(:,r));
+%     [U,S,V] = spm_svd(squeeze(FIR));
+%     FIRcan(:,r) = full(V(:,1)); 
+%     [~,i] = max(abs(FIRcan(:,r))); if sign(FIRcan(i,r))<0; FIRcan(:,r) = -FIRcan(:,r); end
+%     FIRcan(:,r) = FIRcan(:,r) - FIRcan(1,r);
+%     FIRcan(:,r) = FIRcan(:,r)/max(FIRcan(:,r));
     FIRmean = mean(FIR,1)';
-%    figure,plot([FIRcan FIRmean/max(FIRmean)]) % nearly identical except rMC!
-    p = plot(tFIR,FIRcan(:,r),cl{r},'LineWidth',lw(r));
-%    set(p,'Color',ones(1,3)*(4-r)/4)
+    FIRmean = FIRmean - FIRmean(1);
+    FIRmean = FIRmean/max(FIRmean);
+%     figure,plot([FIRcan FIRmean/max(FIRmean)]) % nearly identical except rMC!
+%     p = plot(tFIR,FIRcan(:,r),cl{r},'LineWidth',lw(r));
+    p = plot(tFIR,FIRmean,cl{r},'LineWidth',lw(r));
 end
-spmcan = spm_hrf(1);
-%spmcan = spm_hrf(0.5); spmcan=spmcan(2:2:end);
+[spmcan,p] = spm_hrf(1); spmcan = spm_hrf(1,p,SPM.xBF.T);
+spmcan = spmcan - spmcan(1);
 spmcan = spmcan/max(spmcan);
 p=plot(tFIR-0.5,spmcan(1:nFIR),cl{5},'LineWidth',lw(5)); % -0.5 because CanHRF is returned from 0s onwards
-%set(p,'Color',ones(1,3)/4)
 axis([0 24 -0.2 1])
 line([0 24]',[0 0]','Color',[0 0 0],'LineStyle',':');
 set(gca,'FontSize',12); set(gca,'YTick',[0])
 xlabel('PST (s)'); ylabel('Normalised Amplitude')
-legend({roi_names{:} 'CanHRF'})
+legend({roi_names{1:(nrois-1)} 'CanHRF'})
 
-eval(sprintf('print -dtiff -f%d %s',sf3.Number,fullfile(out_dir,'Graphics','SVD_HRF.tif')))
+eval(sprintf('print -dtiff -f%d %s',sf3.Number,fullfile(out_dir,'Graphics','mean_HRF.tif')))
 
-% figure,plot(FIRcan(:,1))
-% axis([0 32 -0.2 1]); set(gca,'YTick',[])
+%% Produce a better SPM Can HRF (from 2 gammas) and its derivatives?
+% fP = []; err = []; flag = [];
+% cd(bas_dir) % assumes where can_hrf_fit lives
+% for r = 2:nrois %-1 % to ignore rMC
+%     FIR = struct2array(spm_load(fullfile(roi_dir,sprintf('%s_%s_fit.csv.gz',roi_names{r},models{1}))));    
+%     FIR = mean(FIR,1)';
+%     [fP(r,:), err(r), flag(r)] = fminsearch(@(vP) can_hrf_fit(vP,FIR,tFIR),[6 16 1 1 6 0 max(FIR)]);
+% end
+% 
+% mean_FIR = zeros(length(tFIR),1);
+% rois = [1:3]; % ignore rMC
+% for r = rois
+%     FIR = struct2array(spm_load(fullfile(roi_dir,sprintf('%s_%s_fit.csv.gz',roi_names{r},models{1}))));    
+%     FIR = mean(FIR,1)';
+%     mean_FIR = mean_FIR + FIR/length(rois);
+% end
+% [fP(end+1,:), err(end+1), flag(end+1)] = fminsearch(@(vP) can_hrf_fit(vP,mean_FIR,tFIR),[6 16 1 1 6 0 max(mean_FIR)]);
+% flag
+% err
+% fP
+% 
+% [old_can, old_P] = spm_hrf(0.1);
+% old_P(1:6)              % 6    16     1     1     6     0 
+% new_P = fP(end,1:6)     % 4.47 12.33  0.47  2.95  2.06 -0.01
+%
+% new_can = spm_hrf(0.1,new_P);
+% pst_can = [0:0.1:(length(new_can)-1)*dt]';
+% figure,plot(pst_can, new_can/max(new_can))
+% hold on,plot(pst_can, old_can/max(old_can),'r')
+
+% % Temporal derivative (same 1s shift as in SPM) 
+% bf      = new_can;
+% p       = new_P;
+% dp      = 1;
+% p(6)    = p(6) + dp; % one second shift
+% bf(:,2) = (bf(:,1) - spm_hrf(0.1,p))/dp;
+% 
+% % Dispersion derivative (same dp=0.01 as in SPM, even though p halved)
+% p       = new_P;
+% dp      = 0.01;
+% p(3)    = p(3) + dp; 
+% bf(:,3) = (bf(:,1) - spm_hrf(0.1,p))/dp;
+% 
+% bf = spm_orth(bf);
+% figure,plot(pst_can, bf)
+% 
+% fn_can = fullfile(roi_dir,sprintf('revised_canonical_3bf_across%dROIs.csv',length(rois)));
+% fp_can = fopen(fn_can,'w');
+% for b = 1:(length(pst_can)-1); fprintf(fp_can,'t%d,',round(1000*pst_can(b))); end; fprintf(fp_can,sprintf('t%d\n',round(1000*pst_can(end))));
+% for b = 1:(length(pst_can)-1); fprintf(fp_can,'%6.5f,',bf(b,1)); end; fprintf(fp_can,sprintf('%6.5f\n',bf(end,1)));
+% for b = 1:(length(pst_can)-1); fprintf(fp_can,'%6.5f,',bf(b,2)); end; fprintf(fp_can,sprintf('%6.5f\n',bf(end,2)));
+% for b = 1:(length(pst_can)-1); fprintf(fp_can,'%6.5f,',bf(b,3)); end; fprintf(fp_can,sprintf('%6.5f\n',bf(end,3)));
+% fclose(fp_can);
 
 
-%% Supplementary Figure 4 - residuals vary with age?
-sf4 = figure('OuterPosition',[100 100 1100 1100]);  % Supplementary Figure 4
+%% Supplementary Figure 4 - residuals 
+sf4b = figure('OuterPosition',[100 100 1100 1100]);  % Supplementary Figure 4
+RMSE = [];
+labels = models;
+labels{3} = 'NLF1'; % Only 1 df when substituted back into 1st-level GLM
 for m = 1:nmods
     for r = 1:nrois
         subplot(nmods,nrois,(m-1)*nmods+r)
 
-        Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_SSE.csv.gz',roi_names{r},models{m})));
-        
-        % convert to RMSE
-        if strcmp(models{m}(1:3),'NLF')
-            Y = sqrt(Y/nFIR); %yvals = [0:0.01:0.07];
-        else
-            Y = sqrt(Y/nscan); %yvals = [0:0.2:1.2];
-        end
-        %max(Y)
-        yvals = [0:0.2:1.2];
+        Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_RMSE.csv.gz',roi_names{r},models{m})));
+
+        RMSE(:,m,r) = Y;
         
         plot(participants.Age, Y, '.', 'MarkerSize', 4);
         
-        axis([18 88 0 max(yvals)])
         set(gca,'XTick',[18:10:88],'FontSize',10);
         set(gca,'YTick',yvals,'FontSize',10);
         
@@ -709,58 +901,55 @@ for m = 1:nmods
             xlabel('Age (years)','FontSize',12);
         end
         if r == 1
-            ylabel(sprintf('%s: RMSE',models{m}),'FontSize',12)
+            ylabel(sprintf('%s: RMSE',labels{m}),'FontSize',12)
         end
         
         drawnow;
     end
 end
 
-eval(sprintf('print -dtiff -f%d %s',sf4.Number,fullfile(out_dir,'Graphics','residuals.tif')))
+for m = 1:nmods
+    for r = 1:nrois
+       subplot(nmods,nrois,(m-1)*nmods+r)
+       axis([18 88 0 max(RMSE(:))])
+    end
+end
+
+eval(sprintf('print -dtiff -f%d %s',sf4b.Number,fullfile(out_dir,'Graphics','residuals_age.tif')))
 
 
-
-%% Supplementary Figure 5 NLF parameters against age
-m = 3;
-nparams = 4;
-nlabels = {'Lat. Off.','Lat. Scl.','Amp. Off.','Amp. Scl.'}; % just avoiding '_' making subscript in Matlab below
-sf5 = figure('OuterPosition',[100 100 1100 1100]); 
-
+% Needs RMSE from above and FIR_RMSE from Figure 4
+sf4a = figure('OuterPosition',[100 100 1100 1100]);  % Supplementary Figure 4
 for r = 1:nrois
-    
-    Y = spm_load(fullfile(roi_dir,sprintf('%s_%s_beta.csv.gz',roi_names{r},models{m})));
-    labels = strvcat(fields(Y));
-    Y = struct2array(Y);
-     
-    for p = 1:nparams
-        subplot(nparams, nrois, (p-1)*nrois + r)
-        grid on % axis square
-        
-        plot(participants.Age, Y(:,p), '.', 'MarkerSize', 4);
-        
-        set(gca,'XTick',[18:10:88],'FontSize',10);
-        
-        [Rval,Pval]=corr(participants.Age, Y(:,p), 'type','Spearman');
-        legend(sprintf('R=%+3.2f, p=%3.2f',Rval,Pval),'FontSize',8,'Location','NorthEast');
-        
-        if p == 1
-            title(roi_names{r})
-        elseif p == nparams
-            xlabel('Age (years)','FontSize',12);
-        end
-        if r == 1
-%            ylabel(sprintf('NLF4: %s',labels(p,:)),'FontSize',12)
-            ylabel(sprintf('NLF4: %s',nlabels{p}),'FontSize',12)
-        end
-        
-        drawnow;
-    end
+    subplot(2,nrois,r)
+    e = squeeze(RMSE(:,:,r));
+    e = log(e);
+    boxplot(e)
+    title(roi_names{r})
+    set(gca,'XTickLabel',labels)
+    t_matrix(e,1);
+    set(gca,'Ytick',[])
+    ylabel('Log RMSE across scans')
+    axis([0.5 4.5 min(e(:)) max(e(:))])
+end
+labels = models;
+for r = 1:nrois
+    subplot(2,nrois,r+nrois)
+    e = squeeze(FIR_RMSE(:,:,r));
+    e = log(e);
+    boxplot(e)
+    title(roi_names{r})
+    set(gca,'XTickLabel',labels)
+    t_matrix(e,1);
+    set(gca,'Ytick',[])
+    ylabel('Log RMSE across FIR bins')
+    axis([0.5 4.5 min(e(:)) max(e(:))])
 end
 
-eval(sprintf('print -dtiff -f%d %s',sf5.Number,fullfile(out_dir,'Graphics','NLF4_age.tif')))
+eval(sprintf('print -dtiff -f%d %s',sf4a.Number,fullfile(out_dir,'Graphics','residuals_rmse.tif')))
 
 
-%% Supplementary Figure S6 - PEB HDM fits for main effect
+%% Supplementary Figure S5 - PEB HDM fits for main effect
 
 params = {'efficacy','decay','transit'};
 nparams = length(params);
@@ -771,7 +960,7 @@ effs = 'Mean'; e = 1;
 
 load(fullfile(hdm_dir,sprintf('BMAs_%d.mat',nparams)));
 
-sf6 = figure('OuterPosition',[100 100 1100 600]);
+sf5 = figure('OuterPosition',[100 100 1100 600]);
 ax = [];
 for r = 1:nrois
     ax(r) = subplot(1,4,r);
@@ -785,6 +974,10 @@ for r = 1:nrois
     Ep = full(Ep(reord,e));
     Vp = full(Vp(reord,e));
     
+    % Disregard trivially small parameter values, which we define as those with a rate constant less then 0.001Hz. 
+    % This cut-off corresponds to half-life greater than 1000*ln(2)=693s=11.5 minutes, which is too slow to be relevant.    
+    Ep(find(abs(Ep)<0.001)) = 0; 
+
     spm_plot_ci(Ep,Vp);
     %spm_plot_ci(Ep./sqrt(Vp),zeros(length(Ep),1)); ylabel('Zscore') % Z-scores since different scalings?
     
@@ -792,11 +985,12 @@ for r = 1:nrois
     title(roi_names{r});
 end
 linkaxes(ax,'xy');
-eval(sprintf('print -dtiff -f%d %s',sf6.Number,fullfile(out_dir,'Graphics',sprintf('HDM%d_Params_%s.tif',nparam,effs))))
+
+eval(sprintf('print -dtiff -f%d %s',sf5.Number,fullfile(out_dir,'Graphics',sprintf('HDM%d_Params_%s.tif',nparam,effs))))
 
 
 
-%% Supplementary Figure S7 - LOOCV for Can1-Can3
+%% Supplementary Figure S6 - LOOCV for Can1-Can3
 params = {};
 params{1} = {'hrf'};
 params{2} = {'hrf (with time derivative)'};
@@ -808,49 +1002,68 @@ for m = 1:length(params)
     label{m} = sprintf('Can%d',nparams(m));
 end
 
-sf7 = figure('OuterPosition',[100 100 1100 600]);
-
-MM = []; %AgeR2 = [];
-for r = 1:nrois
-     err = nan(nparticipants,length(params));   
-     for m = 1:length(params)
-         Y = spm_load(fullfile(roi_dir,sprintf('%s_CAN%d_beta.csv.gz',roi_names{r},nparams(m))));      
-         
-         if m>1; Y = struct2array(Y); end % when only one column, spm_load ignores header!
-        
-%        [~,~,~,~,AgeR2(p,r)] = glm(participants.Age,[Y ones(nparticipants,1)],[eye(nparams(m)) zeros(nparams(m),1)]',0);
-         
-        for s = 1:nparticipants
-            sidx = [1:nparticipants]; sidx(s)=[];
-            X = [Y(sidx,:) ones(nparticipants-1,1)];
-            B = pinv(X)*participants.Age(sidx);
-            pred_age = [Y(s,:) 1]*B;
-            err(s,m) = participants.Age(s) - pred_age;
-        end
-     end
-     subplot(1,nrois,r),hold on
-     
-     line(kron(ones(nparticipants,1),[1:size(err,2)])',abs(err'),'Color',[0.5 0.5 0.5])
-     err = abs(err);
-     boxplot(err); % bar(mean(err))
-     set(gca,'XTickLabel',label,'FontSize',10);
-     
-     if r==1; ylabel('Abs Error (Years)');end
-     % Compare first model with all others
-     p = nan(1,size(err,2)); for m = 2:size(err,2); p(m) = signrank(err(:,m-1),err(:,m)); end  % CARE - pairwise tests now (not against err(:,1))
-     %p = nan(1,size(err,2)); for m = 2:size(err,2); [~,p(m)] = ttest([err(:,1) - err(:,m)]); end % difference quite Gaussian even if individuals not
-     f = find(p < .05/(length(params)-1)); 
-     MM(:,r) = median(err)';
-     for ff = f; text(ff-0.1,MM(ff,r),'*','FontSize',12,'Color',[0 1 0]); end
-     title(roi_names{r});
+sf6 = figure('OuterPosition',[100 100 1100 600]); hold on
+mina = []; maxa = [];
+err = nan(nparticipants,length(params)); pred_age = nan(nparticipants,length(params));
+for m = 1:length(params)      
+    Y = [];
+    for r = 1:nrois
+        rY = spm_load(fullfile(roi_dir,sprintf('%s_CAN%d_beta.csv.gz',roi_names{r},nparams(m))));      
+        try rY = struct2array(rY); end
+        Y = [Y rY];
+    end
+      
+    for s = 1:nparticipants
+        sidx = [1:nparticipants]; sidx(s)=[];
+        X = [Y(sidx,:) ones(nparticipants-1,1)];
+        B = pinv(X)*participants.Age(sidx);
+        pred_age(s,m) = [Y(s,:) 1]*B;
+        err(s,m) = participants.Age(s) - pred_age(s,m);
+    end  
+    
+%      subplot(1,nrois,r),hold on    
+%      err = abs(err);
+%      line(kron(ones(nparticipants,1),[1:size(err,2)])',abs(err'),'Color',[0.5 0.5 0.5])
+%      boxplot(err); % bar(mean(err))
+%      set(gca,'XTickLabel',label,'FontSize',10);
+%      
+%      if r==1; ylabel('Abs Error (Years)');end
+%      % Compare first model with all others
+%      p = nan(1,size(err,2)); for m = 2:size(err,2); p(m) = signrank(err(:,1),err(:,m)); end % CARE - tests against first model
+%      %p = nan(1,size(err,2)); for m = 2:size(err,2); [~,p(m)] = ttest([err(:,1) - err(:,m)]); end % difference quite Gaussian even if individuals not
+%      f = find(p < .05/(length(params)-1)); 
+%      MM(:,r) = median(err)';
+%      for ff = f; text(ff-0.1,MM(ff,r),'*','FontSize',12,'Color',[0 1 0]); end
+%      title(roi_names{r});
 end
-MM
-mean(MM,2)
 
-eval(sprintf('print -dtiff -f%d %s',sf7.Number,fullfile(out_dir,'Graphics','Can_LOOCV.tif')))
+err = abs(err);
+median(err)
+p = nan(length(params)); 
+for m1 = 1:length(params) 
+    for m2 = (m1+1):length(params)
+        p(m1,m2) = signrank(err(:,m1),err(:,m2)); 
+    end
+end
+p
+%p = p*length(find(~isnan(p)))
+
+line(kron(ones(nparticipants,1),[1:size(err,2)])',abs(err'),'Color',[0.8 0.8 0.8])
+boxplot(abs(err))
+ylabel('Absolute Error (Years)')
+set(gca,'XTickLabel',label)
+ylim([0 max(err(:))])
+line([0 5],[10 10],'Color',[0 0 0],'LineStyle',':')
+axis([mina maxa mina maxa]);
+ 
+for m = 1:length(params)
+    if p(1,m)<.05, text(m-0.02,52,'*','FontSize',18), end
+end
+
+eval(sprintf('print -dtiff -f%d %s',sf6.Number,fullfile(out_dir,'Graphics','Can_LOOCV.tif')))
 
 
-%% Supplementary Figure S8 - LOOCV for HDM3-5
+%% Supplementary Figure S7 - LOOCV for HDM3-5
 params = {};
 params{1} = {'efficacy','decay','transit'};
 params{2} = {'efficacy','decay','transit','alpha'};
@@ -862,44 +1075,114 @@ for m = 1:length(params)
     label{m} = sprintf('HDM%d',length(params{m}));
 end
 
-sf8 = figure('OuterPosition',[100 100 1100 600]);
-MM = []; %AgeR2 = [];
-for r = 1:nrois
-     err = nan(nparticipants,length(params));   
-     for m = 1:length(params)
-         Y = spm_load(fullfile(roi_dir,sprintf('%s_HDM%d_beta.csv.gz',roi_names{r},length(params{m}))));      
-         Y = struct2array(Y);
-        
-%        [~,~,~,~,AgeR2(p,r)] = glm(participants.Age,[Y ones(nparticipants,1)],[eye(length(params{m})) zeros(length(params{m}),1)]',0);
-         
-        for s = 1:nparticipants
-            sidx = [1:nparticipants]; sidx(s)=[];
-            X = [Y(sidx,:) ones(nparticipants-1,1)];
-            B = pinv(X)*participants.Age(sidx);
-            pred_age = [Y(s,:) 1]*B;
-            err(s,m) = participants.Age(s) - pred_age;
-        end
-     end
-     subplot(1,nrois,r),hold on,
-     
-     err = abs(err);
-     line(kron(ones(nparticipants,1),[1:size(err,2)])',abs(err'),'Color',[0.5 0.5 0.5])
-     boxplot(err); % bar(mean(err))
-     set(gca,'XTickLabel',label,'FontSize',10);
-     
-     if r==1; ylabel('Abs Error (Years)');end
-     % Compare first model with all others
-     p = nan(1,size(err,2)); for m = 2:size(err,2); p(m) = signrank(err(:,1),err(:,m)); end % CARE - tests against first model
-     %p = nan(1,size(err,2)); for m = 2:size(err,2); [~,p(m)] = ttest([err(:,1) - err(:,m)]); end % difference quite Gaussian even if individuals not
-     f = find(p < .05/(length(params)-1)); 
-     MM(:,r) = median(err)';
-     for ff = f; text(ff-0.1,MM(ff,r),'*','FontSize',12,'Color',[0 1 0]); end
-     title(roi_names{r});
+sf7 = figure('OuterPosition',[100 100 1100 600]); hold on
+mina = []; maxa = [];
+err = nan(nparticipants,nmods); pred_age = nan(nparticipants,nmods);
+for m = 1:length(params)      
+    Y = [];
+    for r = 1:nrois
+        rY = spm_load(fullfile(roi_dir,sprintf('%s_HDM%d_beta.csv.gz',roi_names{r},length(params{m}))));      
+        rY = struct2array(rY);     
+        Y = [Y rY];
+    end
+      
+    for s = 1:nparticipants
+        sidx = [1:nparticipants]; sidx(s)=[];
+        X = [Y(sidx,:) ones(nparticipants-1,1)];
+        B = pinv(X)*participants.Age(sidx);
+        pred_age(s,m) = [Y(s,:) 1]*B;
+        err(s,m) = participants.Age(s) - pred_age(s,m);
+    end  
+    
+%      subplot(1,nrois,r),hold on    
+%      err = abs(err);
+%      line(kron(ones(nparticipants,1),[1:size(err,2)])',abs(err'),'Color',[0.5 0.5 0.5])
+%      boxplot(err); % bar(mean(err))
+%      set(gca,'XTickLabel',label,'FontSize',10);
+%      
+%      if r==1; ylabel('Abs Error (Years)');end
+%      % Compare first model with all others
+%      p = nan(1,size(err,2)); for m = 2:size(err,2); p(m) = signrank(err(:,1),err(:,m)); end % CARE - tests against first model
+%      %p = nan(1,size(err,2)); for m = 2:size(err,2); [~,p(m)] = ttest([err(:,1) - err(:,m)]); end % difference quite Gaussian even if individuals not
+%      f = find(p < .05/(length(params)-1)); 
+%      MM(:,r) = median(err)';
+%      for ff = f; text(ff-0.1,MM(ff,r),'*','FontSize',12,'Color',[0 1 0]); end
+%      title(roi_names{r});
 end
-MM
-mean(MM,2)
 
-eval(sprintf('print -dtiff -f%d %s',sf8.Number,fullfile(out_dir,'Graphics','HDM_LOOCV.tif')))
+err = abs(err);
+median(err)
+p = nan(nmods); 
+for m1 = 1:nmods 
+    for m2 = (m1+1):nmods
+        p(m1,m2) = signrank(err(:,m1),err(:,m2)); 
+    end
+end
+p
+%p = p*length(find(~isnan(p)))
+
+line(kron(ones(nparticipants,1),[1:size(err,2)])',abs(err'),'Color',[0.8 0.8 0.8])
+boxplot(abs(err))
+ylabel('Absolute Error (Years)')
+set(gca,'XTickLabel',label)
+ylim([0 max(err(:))])
+line([0 5],[10 10],'Color',[0 0 0],'LineStyle',':')
+axis([mina maxa mina maxa]);
+ 
+for m = 1:nmods
+    if p(1,m)<.05, text(m-0.03,60,'*','FontSize',18), end
+end
+
+eval(sprintf('print -dtiff -f%d %s',sf7.Number,fullfile(out_dir,'Graphics','HDM_LOOCV.tif')))
 
 
 
+
+%% Supplementary Figure S8 - Age effects on second-order Volterra kernel, ie nonlinearities as function of poststimulus time?
+sf8 = figure('OuterPosition',[100 100 1100 600]);
+
+hdm_dir = fullfile(out_dir,'HDM_fits');
+zAge = zscore(participants.Age);
+mpst = []; T = []; p = []; tp = 1:8:64;
+for r = 1:nrois
+    load(fullfile(hdm_dir,sprintf('GCM_HDM%d_%s.mat',nparam,roi_names{r})));
+    pst = round(1000*[1:GCM{1}.M.N]*GCM{1}.M.dt)/1000;
+    
+    for pl = 1:2
+        Y = [];
+        for s = 1:nparticipants
+            if pl==1
+                Y(s,:,:) = GCM{s}.K2;
+            else
+                Y(s,:,:) = zAge(s) * GCM{s}.K2;
+            end               
+        end
+        
+        mY = squeeze(mean(Y,1));
+        %T = mY ./ (squeeze(std(Y)) / sqrt(nparticipants));
+        %figure,imagesc(T),colorbar % wiered?
+        subplot(2,4,(pl-1)*4 + r),hold on, colormap('gray')
+        imagesc(mY); axis([1 64 1 64]), axis square
+        set(gca,'XTick',tp,'XTickLabel',round(pst(tp)))
+        set(gca,'YTick',tp,'YTickLabel',round(pst(tp)))
+        title(roi_names{r});
+        
+        % Statistics on saturation effect (though no multiple comparison correction)
+        if pl == 1
+            [~,ind] = min(mY(:)); [x,y] = ind2sub(size(mY),ind);
+        elseif pl == 2
+            [~,ind] = max(mY(:)); [x,y] = ind2sub(size(mY),ind);
+        end
+        mpst(r,pl,:) = [pst(x) pst(y)];
+        d = squeeze(Y(:,x,y));
+        T(r,pl) = mean(d)/(std(d)/sqrt(size(Y,1)));
+        p(r,pl) = 2*tcdf(-abs(T(r,pl)),size(Y,1)-1);
+    end
+end
+
+T, p
+squeeze(mpst(:,1,:))
+squeeze(mpst(:,2,:))
+
+
+eval(sprintf('print -dtiff -f%d %s',sf8.Number,fullfile(out_dir,'Graphics','Volterra2.tif')))
