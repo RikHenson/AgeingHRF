@@ -12,9 +12,11 @@ For the matlab scripts to work, you need to extract these files, eg with "tar xf
 
 Note for the FIR model, the <roi>_FIR_fit.csv.gz file does not exist because it is identical to <roi>_FIR_beta.csv.gz.
 
-There is also a Matlab file "SPM_CC110037_Stim.mat" containing the 1st-level fMRI analysis in SPM12 from an example participant (containing FIR design matrix in SPM.xX.X, as well as other meta data, eg TR etc)
+There is a Matlab file "SPM_CC110037_Stim.mat" containing the 1st-level fMRI analysis in SPM12 from an example participant (containing FIR design matrix in SPM.xX.X, as well as other meta data, eg TR etc)
 
 There is a binary grey-matter mask image dartel_GM_mask.nii.gz (obtained by thresholding >0.5 the CamCAN DARTEL GM template).
+
+There are also four MNI nii mask images for the four ROIs (obtained by thresholding the Group SPM analyses, as described in paper)
 
 There are also CSV files for latent vascular factors (LVFs) and MEG ERF energies for each participant for mediation analyses in paper
 
