@@ -7,17 +7,19 @@ The raw fMRI images are available on request from this website:
     https://camcan-archive.mrc-cbu.cam.ac.uk/dataaccess/
 
     Specifically, select the "preproc_fMRI_Smooth" images that have 
-    been realigned, slice-time corrected, DARTEL normalised and 
-    smoothed (see above website for more details). 
+    been realigned, slice-time corrected and DARTEL normalised 
+    (see above website for more details). 
 
     Note these are large files, and include images from two other
     runs (Rest and Movie) that you can delete.
 
 Some "derived" data available in folders of this repository (which need
-unzipping when uploaded):
+unzipping once uploaded):
 
     "Onsets" (BIDS events files)
     "Confounds" (realignment parameters and CSF/WM timeseries) 
+    "ROI_data" (some mask images, example SPM.mat file, external 
+                measurements like MEG, updated canonical HRF)
 
 You need Matlab installed (www.mathworks.com; the present scripts used 
 MATLAB Version 9.9.0.1495850 (R2020b) Update 1), and then download 
@@ -33,7 +35,6 @@ functions used in Matlab scripts below).
 Finally, for HDM fitting, you'll need the "HDM-toolbox" from 
 
     https://github.com/pzeidman/HDM-toolbox
-
 
 The file "participants.csv" in root folder has ID & Age of each participant.
 
@@ -54,9 +55,8 @@ The Matlab scripts from raw data to figures in paper are:
 
 The folder "ManualGraphics" contains schematic figures created by hand.
 
-
 For users without Matlab, some additional derived gzipped CSV files with 
 fMRI timeseries and model parameters for each of 4 ROIs described in the 
 paper are in the repository folder "ROI_data".
 
-rik.henson@mrc-cbu.cam.ac.uk                Jan 2023
+rik.henson@mrc-cbu.cam.ac.uk                Jan 2024
