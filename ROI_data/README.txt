@@ -6,7 +6,7 @@ The gzipped tarball "all_rois.tar.gz" contains gzipped CSVs for each of the 4 RO
 
         <roi>_<model>_beta.csv.gz = estimates for each participant and parameter of model
         <roi>_<model>_fit.csv.gz  = fitted response for each participant and timepoint
-        <roi>_<model>_RMSE.csv.gz = root-mean-sum of squared residuals for each participant
+        <roi>_<model>_RMSE.csv.gz = root-mean-squared residuals for each participant
 
 For the matlab scripts to work, you need to extract these files, eg with "tar xfz all_rois.tar.gz" in linux.
 
