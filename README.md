@@ -6,20 +6,22 @@ The raw fMRI images are available on request from this website:
 
     https://camcan-archive.mrc-cbu.cam.ac.uk/dataaccess/
 
-    Specifically, select the "preproc_fMRI_Smooth" images that have 
+    Specifically, select the "preproc_fMRI_DARTEL" images that have 
     been realigned, slice-time corrected and DARTEL normalised 
     (see above website for more details). 
 
     Note these are large files, and include images from two other
     runs (Rest and Movie) that you can delete.
 
-Some "derived" data available in folders of this repository (which need
-unzipping once uploaded):
+Some "derived" data available in folders of this repository:
 
     "Onsets" (BIDS events files)
     "Confounds" (realignment parameters and CSF/WM timeseries) 
     "ROI_data" (some mask images, example SPM.mat file, external 
                 measurements like MEG, updated canonical HRF)
+
+(some files in these folders need unzipping once uploaded - see README.txt 
+within each folder).
 
 You need Matlab installed (www.mathworks.com; the present scripts used 
 MATLAB Version 9.9.0.1495850 (R2020b) Update 1), and then download 
@@ -53,10 +55,20 @@ The Matlab scripts from raw data to figures in paper are:
     s5_produce_figures.m - create TIF files for majority of figures in
         paper (excluding schematics)
 
+For the mediation analyses in s5_produce_figures.m, you'll also need to 
+download the Matlab mediation toolbox from 
+https://github.com/canlab/MediationToolbox, which uses some utility 
+functions that you can download from https://github.com/canlab/CanlabCore
+
 The folder "ManualGraphics" contains schematic figures created by hand.
 
 For users without Matlab, some additional derived gzipped CSV files with 
 fMRI timeseries and model parameters for each of 4 ROIs described in the 
 paper are in the repository folder "ROI_data".
 
-rik.henson@mrc-cbu.cam.ac.uk                Jan 2024
+rik.henson@mrc-cbu.cam.ac.uk                Revised Jan 2024
+
+with thanks to Wiktor Olszowy for careful code checking and improvements,
+and Peter Zeidman, Kamen Tsvetanov and Pranay Yadav (and Wiktor again) 
+for conceptual help with the accompanying paper.
+

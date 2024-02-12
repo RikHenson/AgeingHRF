@@ -18,7 +18,8 @@ git_dir = fullfile(bas_dir,'AgeingHRF-main')
 spm_dir = '/imaging/local/software/spm_cbu_svn/releases/spm12_latest/' % Your local installation of SPM12
 addpath(spm_dir);
 
-addpath(fullfile(git_dir,'Matlab_Utils')) % Some SPM12 updates needed for below (eg to properly turn-off orthogonalisation of basis functions)
+% Some SPM12 updates needed for below (eg to properly turn-off orthogonalisation of basis functions, and for variance explained by K2 etc)
+addpath(fullfile(git_dir,'Matlab_Utils')) 
 spm('Defaults','fMRI')
 
 out_dir = fullfile(bas_dir,'outputs'); % Where results will go
@@ -548,7 +549,7 @@ for r = 1:nrois
     Ep = full(Ep(reord,e));
     Vp = full(Vp(reord,e));
     
-    % Disregard trivially small parameter values, which we define as those with a rate constant less then 0.001Hz. 
+    % Disregard trivially small parameter values, which we define as those with a rate constant less than 0.001Hz. 
     % This cut-off corresponds to half-life greater than 1000*ln(2)=693s=11.5 minutes, which is too slow to be relevant.    
     Ep(find(abs(Ep)<0.001)) = 0; 
     
@@ -680,15 +681,15 @@ M = GCM{1}.M; % M.De same for all subjects, so take first
 pE.efficacy = 1; % Needed by spm_bireduce below
 
 params = {'efficacy','decay','transit','alpha','feedback','E0'};
-labels = {'efficacy \beta (HDM3)','decay \kappa (HDM3)','transit 1/\tau_h (HDM3)','stiffness \alpha (HDM4)','feedback \gamma (HDM5)','O_2 extraction, E0 (HDM6)'};
+labels = {'efficacy \beta (HDM3)','decay \kappa (HDM3)','transit 1/\tau_h (HDM3)','stiffness \alpha (HDM4)','feedback \gamma (HDM5)','O_2 extraction, E_0 (HDM6)'};
 nparam = length(params);
 
 % Priors (plus bit above/below) from HDM.M.De
 scales{1} = [0.1 0.2 0.3];
 scales{2} = [0.32 0.64 1.28];
 scales{3} = [0.51 1.02 2.04];
-scales{4} = [0.21 0.41 0.82];
-scales{5} = [0.17 0.33 0.66];
+scales{4} = [0.17 0.33 0.66];
+scales{5} = [0.21 0.41 0.82];
 scales{6} = [0.20 0.40 0.80];
 
 % Reassign priors
@@ -890,7 +891,7 @@ for m = 1:nmods
         plot(participants.Age, Y, '.', 'MarkerSize', 4);
         
         set(gca,'XTick',[18:10:88],'FontSize',10);
-        set(gca,'YTick',yvals,'FontSize',10);
+        %set(gca,'YTick',yvals,'FontSize',10);
         
         [Rval,Pval]=corr(participants.Age,Y,'type','Spearman');
         legend(sprintf('R=%+3.2f, p=%3.2f',Rval,Pval),'FontSize',8,'Location','NorthEast');
@@ -928,10 +929,10 @@ for r = 1:nrois
     title(roi_names{r})
     set(gca,'XTickLabel',labels)
     t_matrix(e,1);
-    set(gca,'Ytick',[])
-    ylabel('Log RMSE across scans')
-    axis([0.5 4.5 min(e(:)) max(e(:))])
+    if r == 1; ylabel('Log RMSE across scans'); end
+    axis([0.5 4.5 min(log(RMSE(:))) max(log(RMSE(:)))])
 end
+
 labels = models;
 for r = 1:nrois
     subplot(2,nrois,r+nrois)
@@ -941,9 +942,8 @@ for r = 1:nrois
     title(roi_names{r})
     set(gca,'XTickLabel',labels)
     t_matrix(e,1);
-    set(gca,'Ytick',[])
-    ylabel('Log RMSE across FIR bins')
-    axis([0.5 4.5 min(e(:)) max(e(:))])
+    if r == 1; ylabel('Log RMSE across FIR bins'); end
+    axis([0.5 4.5 min(log(FIR_RMSE(:))) max(log(FIR_RMSE(:)))])
 end
 
 eval(sprintf('print -dtiff -f%d %s',sf4a.Number,fullfile(out_dir,'Graphics','residuals_rmse.tif')))
@@ -1137,10 +1137,10 @@ eval(sprintf('print -dtiff -f%d %s',sf7.Number,fullfile(out_dir,'Graphics','HDM_
 
 
 
-
 %% Supplementary Figure S8 - Age effects on second-order Volterra kernel, ie nonlinearities as function of poststimulus time?
 sf8 = figure('OuterPosition',[100 100 1100 600]);
 
+nparam = 3;
 hdm_dir = fullfile(out_dir,'HDM_fits');
 zAge = zscore(participants.Age);
 mpst = []; T = []; p = []; tp = 1:8:64;
@@ -1160,7 +1160,7 @@ for r = 1:nrois
         
         mY = squeeze(mean(Y,1));
         %T = mY ./ (squeeze(std(Y)) / sqrt(nparticipants));
-        %figure,imagesc(T),colorbar % wiered?
+        %figure,imagesc(T),colorbar 
         subplot(2,4,(pl-1)*4 + r),hold on, colormap('gray')
         imagesc(mY); axis([1 64 1 64]), axis square
         set(gca,'XTick',tp,'XTickLabel',round(pst(tp)))
@@ -1170,19 +1170,45 @@ for r = 1:nrois
         % Statistics on saturation effect (though no multiple comparison correction)
         if pl == 1
             [~,ind] = min(mY(:)); [x,y] = ind2sub(size(mY),ind);
+            mpst(r,pl,:) = [x y];
+            d = squeeze(Y(:,x,y));
+            T(r,pl) = mean(d)/(std(d)/sqrt(size(Y,1)));
+            p(r,pl) = 2*tcdf(-abs(T(r,pl)),size(Y,1)-1);
         elseif pl == 2
             [~,ind] = max(mY(:)); [x,y] = ind2sub(size(mY),ind);
+            mpst(r,pl,:) = [x y];
+            % d = squeeze(Y(:,x,y));
+            d = squeeze(Y(:,mpst(r,1,1),mpst(r,1,2))); % Take from maximal mean effect
+            T(r,pl) = mean(d)/(std(d)/sqrt(size(Y,1)));
+            p(r,pl) = 2*tcdf(-abs(T(r,pl)),size(Y,1)-1);
         end
-        mpst(r,pl,:) = [pst(x) pst(y)];
-        d = squeeze(Y(:,x,y));
-        T(r,pl) = mean(d)/(std(d)/sqrt(size(Y,1)));
-        p(r,pl) = 2*tcdf(-abs(T(r,pl)),size(Y,1)-1);
-    end
+   end
 end
 
+eval(sprintf('print -dtiff -f%d %s',sf8.Number,fullfile(out_dir,'Graphics','Volterra2.tif')))
+
 T, p
+mpst = pst(mpst);
 squeeze(mpst(:,1,:))
 squeeze(mpst(:,2,:))
 
+% Check variance of timeseries explained by K1 and K2 (and how much of that
+% variance attributed to age)
 
-eval(sprintf('print -dtiff -f%d %s',sf8.Number,fullfile(out_dir,'Graphics','Volterra2.tif')))
+K2var = nan(nparticipants,nrois); K2age = nan(1,nrois);
+for r = 1:nrois
+    load(fullfile(hdm_dir,sprintf('GCM_HDM%d_%s.mat',nparam,roi_names{r})));
+    for s = 1:size(GCM,1)
+        [~,K2var(s,r)] = kernel_variance(GCM{s});
+    end
+    [~,~,~,~,stats] = regress(K2var(:,r),[zAge zAge.^2 ones(nparticipants,1)]); 
+    K2age(r) = stats(1);
+end
+median(K2var)
+K2age
+
+
+
+
+
+
