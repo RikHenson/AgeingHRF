@@ -173,7 +173,9 @@ end
 for r = 1:nrois
     for m = 1:nmods
         nexttile((m-1)*nmods+r)
-        caxis manual; caxis([minY maxY]); % ensure same scale for all ROIs
+        caxis manual; 
+        caxis([minY maxY]); % ensure same scale for all ROIs
+%        caxis([-0.2, 0.9]); % recommended by Wiktor for better contrast
     end
 end
 
@@ -1143,7 +1145,7 @@ sf8 = figure('OuterPosition',[100 100 1100 600]);
 nparam = 3;
 hdm_dir = fullfile(out_dir,'HDM_fits');
 zAge = zscore(participants.Age);
-mpst = []; T = []; p = []; tp = 1:8:64;
+mpst = []; T = []; p = []; tp = 1:8:64; minY = [0 0]; maxY = [0 0];
 for r = 1:nrois
     load(fullfile(hdm_dir,sprintf('GCM_HDM%d_%s.mat',nparam,roi_names{r})));
     pst = round(1000*[1:GCM{1}.M.N]*GCM{1}.M.dt)/1000;
@@ -1158,7 +1160,9 @@ for r = 1:nrois
             end               
         end
         
-        mY = squeeze(mean(Y,1));
+        mY = squeeze(mean(Y,1)) * 1e3; % scale arbitrary
+        minY(pl) = min([minY(pl) min(mY(:))]); 
+        maxY(pl) = max([maxY(pl) max(mY(:))]);
         %T = mY ./ (squeeze(std(Y)) / sqrt(nparticipants));
         %figure,imagesc(T),colorbar 
         subplot(2,4,(pl-1)*4 + r),hold on, colormap('gray')
@@ -1184,6 +1188,15 @@ for r = 1:nrois
         end
    end
 end
+
+% If you fix colorscale across plots, the rMC effects no longer visible, so
+% keep optimised for each plot
+% for r = 1:nrois
+%     for pl = 1:2
+%         subplot(2,4,(pl-1)*4 + r)
+%         caxis([minY(pl) maxY(pl)]);
+%     end
+% end
 
 eval(sprintf('print -dtiff -f%d %s',sf8.Number,fullfile(out_dir,'Graphics','Volterra2.tif')))
 

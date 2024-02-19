@@ -20,8 +20,8 @@ Some "derived" data available in folders of this repository:
     "ROI_data" (some mask images, example SPM.mat file, external 
                 measurements like MEG, updated canonical HRF)
 
-(some files in these folders need unzipping once uploaded - see README.txt 
-within each folder).
+(some files in these folders need unzipping once downloaded - see 
+README.txt within each folder).
 
 You need Matlab installed (www.mathworks.com; the present scripts used 
 MATLAB Version 9.9.0.1495850 (R2020b) Update 1), and then download 
