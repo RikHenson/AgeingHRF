@@ -446,7 +446,7 @@ end
 eval(sprintf('print -dtiff -f%d %s',f7.Number,fullfile(out_dir,'Graphics','HDM3_age.tif')))
 
 
-% Mediation by vascular factors?
+%% Mediation by vascular factors?
 vasc = readtable(fullfile(roi_dir,'vascular_factors.csv'));
 
 % Average HDM parameters across ROIs
@@ -494,7 +494,8 @@ vasc_ccid = strvcat(vasc.CCID(vasc_inds)); vasc_ccid = str2num(vasc_ccid(:,3:end
 vasc_vals = vasc_vals(vasc_inds(vasc_both));
 mediation(zscore(participants.Age(hdm_both)), zscore(mHDM(hdm_both,p)), zscore(vasc_vals), 'stats', 'verbose', 'names', {'Age', params{p}, LVF});
        
-% Mediation by MEG ERFs (better to do MEG power)
+
+%% Mediation by MEG ERFs 
 
 meg = readtable(fullfile(roi_dir,'MEG_energy.csv'));
 
@@ -527,6 +528,38 @@ for r = 1:nrois
     end
 end
 pval
+
+
+%% MC relation to RTs (added from reviewer suggestion)
+zAge = zscore(participants.Age);
+
+Y = spm_load(fullfile(roi_dir,'lMC_HDM3_beta.csv.gz'));
+labels = fields(Y);
+Y = struct2array(Y);
+cp = 2*3*2*2; % Bonferonni factor: 2-tailed x 3 params x 2 ROIs x 2 contrasts
+for f = 1:length(labels)
+    X = [Y(:,f) zscore(Y(:,f)).*zAge zAge ones(nparticipants,1)];
+    [t,F,p,df,R2,cR2,B] = glm(participants.medRTms,X,[1 0 0 0]',-1);
+    fprintf('lMC: %s    : B=%3.2f, R^2=%3.2f, T(%d)=%3.2f, p=%4.3f (unc), p=%4.3f (cor for %d tests)\n', labels{f}, B(2), cR2, df, t, p, p*cp, cp/2);
+    [t,F,p,df,R2,cR2,B] = glm(participants.medRTms,X,[0 1 0 0]',-1);
+    fprintf('lMC: %sXAge: B=%3.2f, R^2=%3.2f, T(%d)=%3.2f, p=%4.3f (unc), p=%4.3f (cor for %d tests)\n', labels{f}, B(2), cR2, df, t, p, p*cp, cp/2);
+end
+
+Y = spm_load(fullfile(roi_dir,'rMC_HDM3_beta.csv.gz'));
+labels = fields(Y);
+Y = struct2array(Y);
+for f = 1:length(labels)
+    X = [Y(:,f) zscore(Y(:,f)).*zAge zAge ones(nparticipants,1)];
+    [t,F,p,df,R2,cR2,B] = glm(participants.medRTms,X,[1 0 0 0]',-1);
+    fprintf('rMC: %s    : B=%3.2f, R^2=%3.2f, T(%d)=%3.2f, p=%4.3f (unc), p=%4.3f (cor for %d tests)\n', labels{f}, B(2), cR2, df, t, p, p*cp, cp/2);
+    [t,F,p,df,R2,cR2,B] = glm(participants.medRTms,X,[0 1 0 0]',-1);
+    fprintf('rMC: %sXAge: B=%3.2f, R^2=%3.2f, T(%d)=%3.2f, p=%4.3f (unc), p=%4.3f (cor for %d tests)\n', labels{f}, B(2), cR2, df, t, p, p*cp, cp/2);
+end
+
+% (Not due to age in model)
+X = [Y(:,1) ones(nparticipants,1)];
+[t,F,p,df,R2,cR2,B] = glm(participants.medRTms,X,[1 0]');
+fprintf('rMC: Eff Only: %s: B=%3.2f, R^2=%3.2f, p=%4.3f (unc), p=%4.3f (cor for 6 tests)\n', labels{f}, B(1), cR2, p, p*6);
 
 
 %% Figure 8 - Plot HDM parameters after PEB
@@ -1144,7 +1177,6 @@ sf8 = figure('OuterPosition',[100 100 1100 600]);
 
 nparam = 3;
 hdm_dir = fullfile(out_dir,'HDM_fits');
-zAge = zscore(participants.Age);
 mpst = []; T = []; p = []; tp = 1:8:64; minY = [0 0]; maxY = [0 0];
 for r = 1:nrois
     load(fullfile(hdm_dir,sprintf('GCM_HDM%d_%s.mat',nparam,roi_names{r})));
